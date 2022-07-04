@@ -9,7 +9,16 @@
 # 2022/06/14 完善开服，新增手动更新服务器功能
 # 2022/06/15 自动更新mod
 # 2022/06/30 自动更新服务器
-# 2022/07/04 崩档自动重启服务器
+# 2022/07/04 新添保护进程功能，崩档自动重开相应的存档
+
+: "
+可能会更新,更新网址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
+功能如下：
+不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
+自动更新服务器mod
+自动更新服务器
+崩档自动重启服务器
+"
 
 ##全局默认变量
 DST_conf_dirname="DoNotStarveTogether"   
