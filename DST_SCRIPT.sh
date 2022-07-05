@@ -638,16 +638,13 @@ function prepare()
 		DST_game_path="$HOME/dst_beta"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
 	fi
-	if [ ! -d "./dst" ] || [ ! -d "./dst_beta"  ] || [ ! -d "./DST_Updatecheck"  ] || [ ! -d "./DST_Updatecheck/branch_DST"  ] || [ ! -d "./DST_Updatecheck/branch_DST_Beta"  ] ;then
+	if [ ! -d "./steamcmd" ] || [ ! -d "./dst" ] || [ ! -d "./dst_beta"  ] || [ ! -d "./DST_Updatecheck"  ] || [ ! -d "./DST_Updatecheck/branch_DST"  ] || [ ! -d "./DST_Updatecheck/branch_DST_Beta"  ] ;then
+	PreLibrary
 	mkdir "$HOME/dst"
 	mkdir "$HOME/dst_beta"
 	mkdir "$HOME/DST_Updatecheck"
 	mkdir "$HOME/DST_Updatecheck/branch_DST"
 	mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
-	fi
-   	if [ ! -d "./steamcmd" ]
-	then
-	PreLibrary
 	mkdir ./steamcmd
 	mkdir "$HOME/.klei/DoNotStarveTogether"
 	cd ./steamcmd || exit
@@ -663,7 +660,6 @@ function prepare()
         echo "当前服务端版本为测试版！"
 	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
     fi
-    
 	fi
 	cd "$HOME" || exit 
 	Main
