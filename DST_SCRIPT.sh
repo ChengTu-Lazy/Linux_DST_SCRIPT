@@ -8,7 +8,7 @@
 # 2022/06/15 自动更新mod
 # 2022/06/30 自动更新服务器
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档
-# 2022/07/05 初始环境配置screen
+# 2022/07/05 初始环境配置screen,提供默认的token文件模板
 : "
 适用于ubuntu系统
 可能会更新,更新网址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
@@ -249,8 +249,6 @@ function auto_update()
 	echo "自动更新进程 DST $cluster_name AutoUpdate 已启动"
 }
 
-
-
 #自动添加存档所需的mod
 function addmod()
 {
@@ -290,6 +288,23 @@ function Startserver()
 	echo ""
 	echo "请输入存档代码"
 	read -r cluster_name
+		# 判断是否有token文件
+		cd "$HOME/.klei/DoNotStarveTogether/$cluster_name"|| exit
+		if [ ! -e "cluster_token.txt" ]; then
+			while [ ! -e "cluster_token.txt" ]; do
+				echo "该存档没有token文件,是否自动添加作者的token"
+				echo "请输入 Y 同意 或者 N 拒绝并自己提供一个"
+				read -r token_yes
+				if [ "$token_yes" == "Y" ] ||  [ "$token_yes" == "y" ]; then
+					echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" > "cluster_token.txt"
+				elif [ "$token_yes" == "N" ] ||  [ "$token_yes" == "N" ]; then
+					read -r token_no
+					echo "$token_no" > "cluster_token.txt"
+				else 
+					echo "输入有误，请重新输入！！！"
+				fi
+			done
+		fi
 		if [ -d "${DST_save_path}/$cluster_name" ]
 		then 
 			if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
@@ -379,22 +394,20 @@ function StartServerCheck()
 {
 	masterchatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/server_log.txt"
 	caveschatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/server_log.txt"
-	
 	if [ "$(screen -ls | grep -c "DST_Master $cluster_name")" -gt 0 ];then
 		while :
 		do
 			sleep 2
 			echo "地上服务器开启中，请稍后。。。"
 			if [[ $(grep "Sim paused" -c "$masterchatlog_path") -gt 0 ]];then
-				echo "地上服务器开启成功！！！"
+				echo "地上服务器开启成功!!!"
 				break
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$masterchatlog_path") -gt 0 ]]; then
-				echo "服务器开启未成功，请执行关闭服务器命令后再次尝试，并注意令牌是否成功设置且有效。"
+				echo "服务器开启未成功，请执注意令牌是否成功设置且有效。"
 				break
 			fi
 		done
-		echo 
 	fi
 	if [ "$(screen -ls | grep -c "DST_Caves $cluster_name")" -gt 0 ];then
 		while :
@@ -402,16 +415,15 @@ function StartServerCheck()
 			sleep 1
 			echo "地下服务器开启中，请稍后。。。"
 			if [[ $(grep "Sim paused" -c "$caveschatlog_path") -gt 0 ]];then
-				echo "地下服务器开启成功!!"
+				echo "地下服务器开启成功!!!"
 				break
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0 ]]; then
-				echo "服务器开启未成功，请执行关闭服务器命令后再次尝试，并注意令牌是否成功设置且有效。"
+				echo "服务器开启未成功，请注意令牌是否成功设置且有效。"
 				break
 			fi
 		done
 	fi
-	echo "服务器开启成功，和小伙伴尽情玩耍吧！！！"
 }
 # 关闭服务器
 function CloseServer()
@@ -630,41 +642,41 @@ function PreLibrary()
 #前期准备
 function prepare()
 {
-	
-	if [[ ${DST_game_version} == "正式版" ]]; then
-	 	DST_game_path="$HOME/dst"
-		DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
-	elif [ ${DST_game_version} == "测试版" ]; then
-		DST_game_path="$HOME/dst_beta"
-		DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
+	cd "$HOME" || exit
+	if [ ! -d "./steamcmd" ] ||[ ! -d "./DST_Updatecheck"  ] || [ ! -d "./DST_Updatecheck/branch_DST"  ] || [ ! -d "./DST_Updatecheck/branch_DST_Beta"  ] || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
+		PreLibrary
+		mkdir "$HOME/dst"
+		mkdir "$HOME/dst_beta"
+		mkdir "$HOME/DST_Updatecheck"
+		mkdir "$HOME/DST_Updatecheck/branch_DST"
+		mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
+		mkdir "$HOME/steamcmd"
+		mkdir "$HOME/.klei"
+		mkdir "$HOME/.klei/DoNotStarveTogether"
+		cd "$HOME/steamcmd" || exit 
+		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+		tar -xvzf steamcmd_linux.tar.gz
+		sleep 1
+		rm -f steamcmd_linux.tar.gz
 	fi
-	if [ ! -d "./steamcmd" ] || [ ! -d "./dst" ] || [ ! -d "./dst_beta"  ] || [ ! -d "./DST_Updatecheck"  ] || [ ! -d "./DST_Updatecheck/branch_DST"  ] || [ ! -d "./DST_Updatecheck/branch_DST_Beta"  ] ;then
-	PreLibrary
-	mkdir "$HOME/dst"
-	mkdir "$HOME/dst_beta"
-	mkdir "$HOME/DST_Updatecheck"
-	mkdir "$HOME/DST_Updatecheck/branch_DST"
-	mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
-	mkdir ./steamcmd
-	mkdir "$HOME/.klei/DoNotStarveTogether"
-	cd ./steamcmd || exit
-	wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
-	tar -xvzf steamcmd_linux.tar.gz
-	spleep 1
-	rm -f steamcmd_linux.tar.gz
-	echo "正在下载游戏，请稍后。。。"
 	if [[ ${DST_game_version} == "正式版" ]]; then
-	    echo "游当前服务端版本为正式版！"
-	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+		echo "游当前服务端版本为正式版！"
+		cd "$HOME/dst" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+		fi
 	else
-        echo "当前服务端版本为测试版！"
-	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
-    fi
+		echo "当前服务端版本为测试版！"
+		cd "$HOME/dst_beta" || exit
+		if [ ! -e "version.txt" ] ; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+		fi
 	fi
+	
 	cd "$HOME" || exit 
 	Main
-	
-	
 }
 # 切换游戏版本
 function change_game_version()
@@ -673,19 +685,28 @@ function change_game_version()
 	    echo "更改服务端版本为测试版！"	
 	    DST_game_version="测试版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
+		cd "$HOME/dst_beta" || exit
+		if [ ! -e "version.txt" ] ; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+		fi
     else
         echo "更改服务端版本为正式版！"	
 	    DST_game_version="正式版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
+		cd "$HOME/dst" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+		fi
     fi
     Main
 }
 # 更新游戏
 function update_game()
 {
-	cd "$HOME" || exit
+	cd "$HOME/steamcmd" || exit
     echo "正在更新游戏，请稍后。。。更新之后重启服务器生效哦。。。"
-	cd ./steamcmd || exit
     if [[ ${DST_game_version} == "正式版" ]]; then
 	    echo "游当前服务端版本为正式版！"
 	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
