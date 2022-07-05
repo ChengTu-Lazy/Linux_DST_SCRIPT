@@ -7,18 +7,16 @@
 # 2022/06/14 完善开服，新增手动更新服务器功能
 # 2022/06/15 自动更新mod
 # 2022/06/30 自动更新服务器
-# 2022/07/04 新添保护进程功能，崩档自动重开相应的存档
-# 2022/07/05 初始环境配置screen,提供默认的token文件模板
+# 2022/07/04 新添保护进程功能，崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
+# 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 
 : "
 适用于ubuntu系统
-可能会更新,更新网址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
 自动更新服务器mod
 自动更新服务器
 崩档自动重启服务器
-添加自动更新脚本的功能
 "
 
 ##全局默认变量
