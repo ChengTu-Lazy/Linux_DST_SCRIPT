@@ -78,11 +78,11 @@ function get_mew_version()
 	mkdir "$HOME/clone_tamp"
 	cd "$HOME/clone_tamp" || exit
 	git clone https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git
-	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
+	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.SH" "$HOME/DST_SCRIPT.SH"
 	rm -rf "$HOME/clone_tamp"
 	cd "$HOME" || exit
 	clear
-	./DST_SCRIPT.sh
+	./DST_SCRIPT.SH
 }
 
 # 自动更新
