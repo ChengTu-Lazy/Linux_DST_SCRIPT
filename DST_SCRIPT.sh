@@ -9,6 +9,7 @@
 # 2022/06/30 自动更新服务器
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板
+
 : "
 适用于ubuntu系统
 可能会更新,更新网址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
@@ -17,6 +18,7 @@
 自动更新服务器mod
 自动更新服务器
 崩档自动重启服务器
+添加自动更新脚本的功能
 "
 
 ##全局默认变量
@@ -45,7 +47,7 @@ function Main()
 		echo "                                                                                  "
 		echo "     [4]查看游戏服务器状态         [5]控制台             [6]手动重启服务器"
 		echo "                                                                                  "
-		echo "     [7]更换服务器版本            [8]开启swap分区       [9]查看所有已下载mod"
+		echo "     [7]更换到测试服版本           [8]查看所有已下载mod  [9]获取最新脚本			   "
 		echo "                                                                                  "
 		printf  '=%.0s' {1..80}
 		echo "                                                                                  "
@@ -53,16 +55,36 @@ function Main()
 		read -r main1
 		case $main1 in
 			1)update_game break;;
-			2)Startserver break;;
-			3)CloseServer;;
-			4)CheckServer break;;
+			2)start_server break;;
+			3)close_server;;
+			4)check_server break;;
 			5)console ;;
-			6)RestartServer ;;
+			6)restart_server ;;
 			7)change_game_version ;;
-			8)Openswapchoose ;;
-			9)listallmod break;;
+			8)list_all_mod break;;
+			9)get_mew_version break;;
 		esac
     done
+}
+
+# 获取最新版脚本
+function console()
+{
+	echo "没写好，请过段时间更新脚本"
+}
+
+# 获取最新版脚本
+function get_mew_version()
+{
+	echo "下载时间超过10s，就是网络问题，请CTRL+C强制退出，再次尝试，实在不行手动下载最新的。"
+	mkdir "$HOME/clone_tamp"
+	cd "$HOME/clone_tamp" || exit
+	git clone https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git
+	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
+	rm -rf "$HOME/clone_tamp"
+	cd "$HOME" || exit
+	clear
+	./DST_SCRIPT.sh
 }
 
 # 自动更新
@@ -84,15 +106,15 @@ function auto_update()
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ \"\$flag\" == 1 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -lt 1 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -lt 1 ]]; then
-				RestartServer
+				restart_server
 			fi
 		elif [ \"\$flag\" == 2 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -lt 1 ]]; then
-				RestartServer
+				restart_server
 			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -lt 1 ]]; then
-				RestartServer
+				restart_server
 			fi
 		fi
 	}
@@ -137,14 +159,14 @@ function auto_update()
 			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
-			RestartServer
+			restart_server
 		fi
 	}
 	# 重启服务器
-	function RestartServer()
+	function restart_server()
 	{
 		Shutdown
-		StartServer
+		start_server
 	}
 	# 更新服务器
 	function UpdateServer()
@@ -159,7 +181,7 @@ function auto_update()
 			./steamcmd.sh +force_install_dir \"$HOME/dst\" +login anonymous +app_update 343050 validate +quit 
 		fi
 		DST_has_game_update=false
-		StartServer
+		start_server
 	}
 
 	# 关闭服务器
@@ -204,7 +226,7 @@ function auto_update()
 		fi
 	}
 	# 开启服务器
-	function StartServer()
+	function start_server()
 	{
 		Addmod
 		screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
@@ -267,7 +289,7 @@ function addmod()
 		done
 }
 # 开启服务器
-function Startserver()
+function start_server()
 {
 	if [ ! -d "${DST_save_path}" ]
 	then
@@ -318,13 +340,13 @@ function Startserver()
 				flag=$((flag - 2))
 			fi
 			case $flag in
-				1)addmod;StartMaster;StartCaves;auto_update;StartServerCheck;
+				1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;
 				;;
-				2)addmod;StartMaster;auto_update;StartServerCheck;
+				2)addmod;StartMaster;auto_update;start_serverCheck;
 				;;
 				3)echo "存档没有内容，请自行创建！！！"
 				;;
-				4)addmod;StartCaves;auto_update;StartServerCheck;
+				4)addmod;StartCaves;auto_update;start_serverCheck;
 				;;
 			esac
 		else
@@ -345,13 +367,13 @@ function Filechose()
 		flag=$((flag - 2))
 	fi
 	case $flag in
-		1)addmod;StartMaster;StartCaves;auto_update;StartServerCheck;
+		1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;
 		;;
-		2)addmod;StartMaster;auto_update;StartServerCheck;
+		2)addmod;StartMaster;auto_update;start_serverCheck;
 		;;
 		3)echo "存档没有内容，请自行创建！！！"
 		;;
-		4)addmod;StartCaves;auto_update;StartServerCheck;
+		4)addmod;StartCaves;auto_update;start_serverCheck;
 		;;
 	esac
 }
@@ -390,7 +412,7 @@ function StartMaster()
 	screen -dmS  "DST_Master $cluster_name" /bin/sh -c "${DST_save_path}/$cluster_name/startmaster.sh"
 }
 #检查是否成功开启
-function StartServerCheck()
+function start_serverCheck()
 {
 	masterchatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/server_log.txt"
 	caveschatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/server_log.txt"
@@ -426,7 +448,7 @@ function StartServerCheck()
 	fi
 }
 # 关闭服务器
-function CloseServer()
+function close_server()
 {
 	screen -ls
 	echo ""
@@ -507,7 +529,7 @@ function CloseServer()
 		fi
 }
 # 重启服务器
-function RestartServer()
+function restart_server()
 {
 	screen -ls
 	echo ""
@@ -589,7 +611,7 @@ function RestartServer()
 		fi
 }
 # 查看游戏服务器状态
-function CheckServer()
+function check_server()
 {
 	echo " "
 	printf  '=%.0s' {1..60}
@@ -609,7 +631,7 @@ function CheckServer()
 	screen -r "$pid1"
 }
 # 列出所有的mod
-function listallmod()
+function list_all_mod()
 {
 	clear 
 	echo "                                                                                  "
