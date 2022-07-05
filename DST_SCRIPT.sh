@@ -658,6 +658,7 @@ function PreLibrary()
 	sudo apt-get install lib32stdc++6 -y
 	sudo apt-get install libcurl4-gnutls-dev:i386 -y
 	sudo apt install screen
+	sudo apt install gawk
 }
 #前期准备
 function prepare()
