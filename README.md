@@ -12,6 +12,7 @@
 - 提供默认的token文件模板，可以直接将游戏存档放到服务器上使用，不需要手动添加自己的token了，坏处是自己虽然是腐竹，但是管理却是我的，哈哈，好吧，你也可以直接将自己的token输入进去😁
 ##### 使用教程：
 - 将 `DST_SCRIPT.sh` 放到服务器根目录
+- chmod 777 DST_SCRIPT.sh `给予脚本执行权限`
 - ./DST_SCRIPT.sh `初始化环境`
 - 上传游戏存档至 `$home/.klei/DoNotStarveTogether`
 - ./DST_SCRIPT.sh `开始使用`
