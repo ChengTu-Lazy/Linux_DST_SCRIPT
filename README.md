@@ -9,4 +9,14 @@
 - 自动更新服务器mod
 - 自动更新服务器
 - 崩档自动重启服务器
+
+##### 使用教程：
+- 将 `DST_SCRIPT.sh` 放到服务器根目录
+- ./DST_SCRIPT.sh `初始化环境`
+- 上传游戏存档至 `$home/.klei/DoNotStarveTogether`
+- ./DST_SCRIPT.sh `开始使用`
+
 #### 暂且想到这些，后续有更好的想法再更新
+
+
+
