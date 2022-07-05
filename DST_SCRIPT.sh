@@ -1,6 +1,4 @@
 #!/bin/bash
-#Program:
-#	饥荒linux系统服务器开服脚本 测试
 #History:
 # 2022/04/12 诚徒
 # 2022/04/22 适配更多的服务器
@@ -10,8 +8,9 @@
 # 2022/06/15 自动更新mod
 # 2022/06/30 自动更新服务器
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档
-
+# 2022/07/05 初始环境配置screen
 : "
+适用于ubuntu系统
 可能会更新,更新网址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
@@ -626,6 +625,7 @@ function PreLibrary()
 	sudo apt-get install lib32gcc1 -y
 	sudo apt-get install lib32stdc++6 -y
 	sudo apt-get install libcurl4-gnutls-dev:i386 -y
+	sudo apt install screen
 }
 #前期准备
 function prepare()
