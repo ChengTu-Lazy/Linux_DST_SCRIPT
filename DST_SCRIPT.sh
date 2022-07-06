@@ -26,6 +26,7 @@ DST_save_path="$HOME/.klei/DoNotStarveTogether"
 DST_game_version="正式版"
 DST_game_path="$HOME/dst"
 DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
+os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
 # 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 flag=1
 
@@ -43,9 +44,9 @@ function Main()
 		echo "                                                                                  "
 		echo "     [1]更新服务器                [2]启动服务器         [3]关闭饥荒服务器"
 		echo "                                                                                  "
-		echo "     [4]查看游戏服务器状态         [5]控制台             [6]手动重启服务器"
+		echo "     [4]查看游戏服务器状态         [5]控制台             [6]重启服务器"
 		echo "                                                                                  "
-		echo "     [7]更换到测试服版本           [8]查看所有已下载mod  [9]获取最新脚本			   "
+		echo "     [7]更换到测试服版本           [8]查看存档已下载mod  [9]获取最新脚本			   "
 		echo "                                                                                  "
 		printf  '=%.0s' {1..80}
 		echo "                                                                                  "
@@ -89,6 +90,9 @@ function get_mew_version()
 function auto_update()
 {
 	Cluster_bath="${DST_save_path}"/"$cluster_name"
+	ugc_mods_path="${DST_game_path}/ugc_mods"
+	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
+	masterchatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/server_log.txt"
 	cd "$HOME" || exit
 	cd "${Cluster_bath}" || exit
 	# 配置auto_update.sh
@@ -103,15 +107,15 @@ function auto_update()
 	{
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ \"\$flag\" == 1 ]; then
-			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -lt 1 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -lt 1 ]]; then
+			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
 		elif [ \"\$flag\" == 2 ]; then
-			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -lt 1 ]]; then
+			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
 		elif [ \"\$flag\" == 4 ]; then
-			if [[ \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -lt 1 ]]; then
+			if [[ \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
 		fi
@@ -135,7 +139,7 @@ function auto_update()
 			cp \"$HOME/DST_Updatecheck/branch_DST/version.txt\" \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
 		fi
 		#查看副本文件中的版本号和当前游戏的版本号是否一致
-		if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q \"${DST_temp_path}/version_copy.txt\" \"${DST_game_path}/version.txt\" > /dev/null\" ; then
+		if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
 		    DST_has_game_update=true
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端有更新!\e[0m\"	
 			UpdateServer
@@ -148,13 +152,26 @@ function auto_update()
 	function CheckModUpdate()
 	{
 		echo \"\"\"\${DST_now}\"\": 同步服务端更新进程正在运行。。。\"
-		if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"\"${masterchatlog_path}\"\") -gt  0 ]]; then
-		DST_has_mods_update=true
-		DST_now=\$(date +\"%D %T\")
-		echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
+		cd $dontstarve_dedicated_server_nullrenderer_path || exit
+		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt
+		if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterchatlog_path}\") -gt  0 ]]; then
+			DST_has_mods_update=true
+			DST_now=\$(date +\"%D %T\")
+			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
+		elif [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
+			DST_has_mods_update=true
+			DST_now=\$(date +\"%D %T\")
+			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
 		else
-			DST_has_mods_update=false
-			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
+			NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
+			if [ \${NeedsUpdate} == 0 ]
+			then
+				DST_has_mods_update=false
+				echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
+			else
+				DST_has_mods_update=true
+				echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
+			fi
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
 			restart_server
@@ -229,13 +246,38 @@ function auto_update()
 		Addmod
 		screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
 		screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-		while :
-		do
-			sleep 1
-			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -gt 0 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -lt 0 ]]; then
-				break
-			fi
-		done
+		if [ \"\$(screen -ls | grep -c \"DST_Master \"$cluster_name\"\")\" -gt 0 ];then
+			while :
+			do
+				sleep 2
+				echo \"地上服务器开启中，请稍后。。。\"
+				if [[ \$(grep \"Sim paused\" -c \"$masterchatlog_path\") -gt 0 ]];then
+					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g\')
+					if [ \"\${NeedsDownload}\" -ne 0 ]; then
+						restart_server 
+					else
+						echo \"地上服务器开启成功!!!\"
+						break
+					fi
+				fi
+			done
+		fi
+		if [ \"\$(screen -ls | grep -c \"DST_Caves $cluster_name\")\" -gt 0 ];then
+			while :
+			do
+				sleep 1
+				echo \"地下服务器开启中，请稍后。。。\"
+				if [[ \$(grep \"Sim paused\" -c \"$caveschatlog_path\") -gt 0 ]];then
+					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Caves/appworkshop_322330.acf | sed 's/\"//g')
+					if [ \"\${NeedsDownload}\" -ne 0 ]; then
+						restart_server 
+					else
+						echo \"地下服务器开启成功!!!\"
+						break
+					fi
+				fi
+			done
+		fi
 	}
 	#自动添加存档所需的mod
 	function Addmod()
@@ -260,7 +302,6 @@ function auto_update()
 				CheckProcess
 				CheckUpdate
 				CheckModUpdate
-				echo -e \"\\e[31m\"\"\${DST_now}\"\": 半小时后进行下一次循环检查！\\e\\ \"
 				sleep 1
 			done
 	" > "${Cluster_bath}"/auto_update.sh
@@ -420,8 +461,13 @@ function start_serverCheck()
 			sleep 2
 			echo "地上服务器开启中，请稍后。。。"
 			if [[ $(grep "Sim paused" -c "$masterchatlog_path") -gt 0 ]];then
-				echo "地上服务器开启成功!!!"
-				break
+				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
+				if [ "${NeedsDownload}" -ne 0 ]; then
+					restart_server "$cluster_name"
+				else
+					echo "地上服务器开启成功!!!"
+					break
+				fi
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$masterchatlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，请执注意令牌是否成功设置且有效。"
@@ -435,8 +481,13 @@ function start_serverCheck()
 			sleep 1
 			echo "地下服务器开启中，请稍后。。。"
 			if [[ $(grep "Sim paused" -c "$caveschatlog_path") -gt 0 ]];then
-				echo "地下服务器开启成功!!!"
-				break
+				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Caves/appworkshop_322330.acf | sed 's/"//g')
+				if [ "${NeedsDownload}" -ne 0 ]; then
+					restart_server "$cluster_name"
+				else
+					echo "地下服务器开启成功!!!"
+					break
+				fi
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，请注意令牌是否成功设置且有效。"
@@ -529,84 +580,8 @@ function close_server()
 # 重启服务器
 function restart_server()
 {
-	screen -ls
-	echo ""
-	printf  '=%.0s' {1..28}
-	echo -e "请输入要关闭的存档名\c"
-	printf  '=%.0s' {1..28}
-	echo ""
-	read -r cluster_name
-	echo ""
-	if [[ $(screen -ls | grep -c "DST_Master $cluster_name") -gt 0 || $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0 || $(screen -ls | grep -c "DST $cluster_name AutoUpdate") -gt 0 ]]; then
-		if [[ $(screen -ls | grep -c "DST $cluster_name AutoUpdate") -gt 0  ]]; then
-			for i in $(screen -ls | grep -w "DST $cluster_name AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				kill "$i"
-			done
-			else
-				echo "$cluster_name 这个存档没有开启自动更新！！！"
-		fi
-		if [[ $(screen -ls | grep -c "DST_Master $cluster_name") -gt 0  ]]; then
-			for i in $(screen -ls | grep -w "DST_Master $cluster_name" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地上服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地上服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地上服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-				echo "地上服务器已关闭！！！"
-				sleep 1
-			done
-		else
-			echo "$cluster_name 这个存档没有开启地上服务器！！！！！！"
-		fi
-
-		if [[ $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0  ]]; then
-
-			for i in $(screen -ls | grep -w "DST_Caves $cluster_name" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地下服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地下服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"服务器需要重启，给您带来的不便还请谅解！！！\") $(printf \\r)"
-				echo "地下服务器关服中！！！"
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-				echo "地下服务器已关闭！！！"
-				sleep 1
-			done
-		else
-			echo "$cluster_name 这个存档没有开启地下服务器！！！！！！"
-		fi
-			
-			while :
-			do
-				sleep 1
-				if [[ $(screen -ls | grep -c "DST_Master $cluster_name") -gt 0 || $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0 ]]; then
-					echo -e "\e[92m服务器 $cluster_name 正在关闭,请稍后。。。\e[0m"
-				else
-				 	echo -e "\e[92m服务器 $cluster_name 已关闭!!!\e[0m"
-					break
-				fi
-			done
-			Filechose "$cluster_name"
-		else
-			printf  '=%.0s' {1..80}
-			echo ""
-			echo ""
-			echo "当前游戏服务器未开启！！！"
-			echo ""
-			printf  '=%.0s' {1..80}
-			echo ""
-		fi
+	close_server
+	Filechose "$0"
 }
 # 查看游戏服务器状态
 function check_server()
@@ -632,33 +607,97 @@ function check_server()
 function list_all_mod()
 {
 	clear 
+	printf  '=%.0s' {1..26}
+	echo -e "存档目录\c"
+	printf  '=%.0s' {1..26}
+	echo ""
+	echo ""
+	cd "${DST_save_path}" || exit
+	ls
+	cd "$HOME"|| exit
+	echo ""
+	printf  '=%.0s' {1..60}
+	echo ""
+	echo "请输入存档代码"
+	read -r cluster_name
 	echo "                                                                                  "
     echo "                                                                                  "
 	printf  '=%.0s' {1..27}
-    echo -e "  当前服务器已下载的mod如下： \c"
+    echo -e " $cluster_name存档已下载的mod如下： \c"
 	printf  '=%.0s' {1..27}
 	echo ""
-	
-	for i in $( ls -l "${DST_game_path}/mods"| awk '/^d/ {print $NF}' | cut -d '-' -f 2 )
-    do
-        if [[ -f "${DST_game_path}/mods/workshop-$i/modinfo.lua" ]]; then
-	        name=$(grep "${DST_game_path}/mods/workshop-$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
-	        echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
-	    fi
-    done
-	echo ""
-    printf  '=%.0s' {1..80}
+	temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
+	if [ -d "$temp_mods_path" ]; then
+		for i in $( ls -l $temp_mods_path | awk '/^d/ {print $NF}' | cut -d '-' -f 2 )
+		do
+			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
+				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
+				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
+			
+			fi
+		done
+		echo ""
+		printf  '=%.0s' {1..80}
+	else	
+		echo "当前存档没有配置或者下载mod"
+	fi
+
 }
 # 准备环境
 function PreLibrary()
 {
+	if [ "$os" == "Ubuntu" ];then
+	echo ""
+	echo "##########################"
+	echo "# 加载 Ubuntu Linux 环境 #"
+	echo "##########################"
+	echo ""
+	sudo apt-get -y update
+	sudo apt-get -y wget
+	sudo apt-get -y install screen
+	sudo apt-get -y install htop
+	sudo apt-get -y install gawk
+	# 加载 32bit 库
+	sudo apt-get -y install lib32gcc1
+	sudo apt-get -y install lib32stdc++6
+	sudo apt-get -y install libcurl4-gnutls-dev:i386
 	sudo dpkg --add-architecture i386
-	sudo apt-get update -y
-	sudo apt-get install lib32gcc1 -y
-	sudo apt-get install lib32stdc++6 -y
-	sudo apt-get install libcurl4-gnutls-dev:i386 -y
-	sudo apt install screen
-	sudo apt install gawk
+	# 加载 64bit库
+	sudo apt-get -y install lib64gcc1
+	sudo apt-get -y install lib64stdc++6
+	sudo apt-get -y install libcurl4-gnutls-dev
+
+	elif [ "$os" == "CentOS" ];then
+
+		echo ""
+		echo "##########################"
+		echo "# 加载 CentOS Linux 环境 #"
+		echo "##########################"
+		echo ""
+		sudo yum -y update
+		sudo yum -y install tar wget screen
+		# 加载 32bit 库
+		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
+		# 加载 64bit 库
+		sudo yum -y install glibc libstdc++ libcurl
+		if [ -f "/usr/lib/libcurl.so.4" ];then
+			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
+		fi
+		if [ -f "/usr/lib64/libcurl.so.4" ];then
+			ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
+		fi
+	elif [ "$os" == "Arch" ];then
+		echo ""
+		echo "########################"
+		echo "# 加载 Arch Linux 环境 #"
+		echo "########################"
+		echo ""
+		sudo pacman -Syyy
+		sudo pacman -S --noconfirm wget screen
+		sudo pacman -S --noconfirm lib32-gcc-libs libcurl-gnutls
+	else
+		echo "该系统未被本脚本支持！"
+	fi
 }
 #前期准备
 function prepare()
