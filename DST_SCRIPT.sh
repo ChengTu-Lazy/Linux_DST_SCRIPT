@@ -10,6 +10,8 @@
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
+# 2022/07/08 更好的支持多服务器开服，对于开启已开启服务器的行为做出反应
+
 : "
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
@@ -19,6 +21,7 @@
 "
 
 ##全局默认变量
+DST_SCRIPT_version="V1.3"
 DST_conf_dirname="DoNotStarveTogether"   
 DST_conf_basedir="$HOME/.klei" 
 DST_save_path="$HOME/.klei/DoNotStarveTogether"
@@ -37,6 +40,7 @@ function Main()
     echo "                                                                                  "
 	printf  '=%.0s' {1..27}
     echo -e "  当前服务器版本为${DST_game_version}  \c"
+	echo -e "  当前服务器脚本版本为${DST_SCRIPT_version}  \c"
     printf  '=%.0s' {1..27}
 	while :
 	do
@@ -375,52 +379,33 @@ function start_server()
 	echo ""
 	echo "请输入存档代码"
 	read -r cluster_name
-		# 判断是否有token文件
-		cd "$HOME/.klei/DoNotStarveTogether/$cluster_name"|| exit
-		if [ ! -e "cluster_token.txt" ]; then
-			while [ ! -e "cluster_token.txt" ]; do
-				echo "该存档没有token文件,是否自动添加作者的token"
-				echo "请输入 Y 同意 或者 N 拒绝并自己提供一个"
-				read -r token_yes
-				if [ "$token_yes" == "Y" ] ||  [ "$token_yes" == "y" ]; then
-					echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" > "cluster_token.txt"
-				elif [ "$token_yes" == "N" ] ||  [ "$token_yes" == "N" ]; then
-					read -r token_no
-					echo "$token_no" > "cluster_token.txt"
-				else 
-					echo "输入有误，请重新输入！！！"
-				fi
-			done
-		fi
-		if [ -d "${DST_save_path}/$cluster_name" ]
-		then 
-			if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-				flag=4
-			else
-				flag=7
+		if [ "$(screen -ls | grep -c "DST_Caves $cluster_name")" -gt 0 ] ;then
+			echo "该服务器已开启地上服务器，请先关闭再启动！！"
+		elif [ "$(screen -ls | grep -c "DST_Master $cluster_name")" -gt 0 ];then
+			echo "该服务器已开启地下服务器，请先关闭再启动！！"
+		else 
+			# 判断是否有token文件
+			cd "$HOME/.klei/DoNotStarveTogether/$cluster_name"|| exit
+			if [ ! -e "cluster_token.txt" ]; then
+				while [ ! -e "cluster_token.txt" ]; do
+					echo "该存档没有token文件,是否自动添加作者的token"
+					echo "请输入 Y 同意 或者 N 拒绝并自己提供一个"
+					read -r token_yes
+					if [ "$token_yes" == "Y" ] ||  [ "$token_yes" == "y" ]; then
+						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" > "cluster_token.txt"
+					elif [ "$token_yes" == "N" ] ||  [ "$token_yes" == "N" ]; then
+						read -r token_no
+						echo "$token_no" > "cluster_token.txt"
+					else 
+						echo "输入有误，请重新输入！！！"
+					fi
+				done
 			fi
-			if [ -d "${DST_save_path}/$cluster_name/Caves" ] ; then
-				flag=$((flag - 3))
-			else
-				flag=$((flag - 2))
+			if [ -d "${DST_save_path}/$cluster_name" ];then
+				Filechose
 			fi
-			case $flag in
-			# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-				1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;
-				;;
-				2)addmod;StartMaster;auto_update;start_serverCheck;
-				;;
-				3)echo "这行纯粹凑字数,没用的" 
-				;;
-				4)addmod;StartCaves;auto_update;start_serverCheck;
-				;;
-				5)echo "存档没有内容，请自行创建！！！"
-				;;
-				
-			esac
-		else
-			echo "存档不存在，请自行创建！！！" 
 		fi
+		
 }
 # 选择开启的存档
 function Filechose()
@@ -496,15 +481,21 @@ function start_serverCheck()
 			if [[ $(grep "Sim paused" -c "$masterchatlog_path") -gt 0 ]];then
 				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
 				if [ "${NeedsDownload}" -ne 0 ]; then
-					restart_server "$cluster_name"
+					close_server_
+					start_server
 				else
 					echo "地上服务器开启成功!!!"
 					break
 				fi
 			fi
-			if [[ $(grep "Your Server Will Not Start !!!" -c "$masterchatlog_path") -gt 0 ]]; then
+			if  [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0  ]]; then
 				echo "服务器开启未成功，请执注意令牌是否成功设置且有效。"
 				break
+			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
+				echo "服务器开启未成功，可能网络有点问题，正在自动重启。"
+				sleep 3
+				close_server_
+				start_server
 			fi
 		done
 	fi
@@ -516,15 +507,21 @@ function start_serverCheck()
 			if [[ $(grep "Sim paused" -c "$caveschatlog_path") -gt 0 ]];then
 				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Caves/appworkshop_322330.acf | sed 's/"//g')
 				if [ "${NeedsDownload}" -ne 0 ]; then
-					restart_server "$cluster_name"
+					close_server_
+					start_server
 				else
 					echo "地下服务器开启成功!!!"
 					break
 				fi
 			fi
-			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0 ]]; then
+			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，请注意令牌是否成功设置且有效。"
 				break
+			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
+				echo "服务器开启未成功，可能网络有点问题，正在自动重启。"
+				sleep 3
+				close_server_
+				start_server
 			fi
 		done
 	fi
@@ -540,14 +537,17 @@ function close_server()
 	echo ""
 	read -r cluster_name
 	echo ""
+	close_server_
+}
+# 关闭服务器解耦部分
+function close_server_()
+{
 	if [[ $(screen -ls | grep -c "DST_Master $cluster_name") -gt 0 || $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0 || $(screen -ls | grep -c "DST $cluster_name AutoUpdate") -gt 0 ]]; then
 		if [[ $(screen -ls | grep -c "DST $cluster_name AutoUpdate") -gt 0  ]]; then
 			for i in $(screen -ls | grep -w "DST $cluster_name AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
 			do
 				kill "$i"
 			done
-		else
-			echo "$cluster_name 这个存档没有开启自动更新！！！"
 		fi
 		if [[ $(screen -ls | grep -c "DST_Master $cluster_name") -gt 0  ]]; then
 			for i in $(screen -ls | grep -w "DST_Master $cluster_name" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
@@ -565,8 +565,6 @@ function close_server()
 				echo "地上服务器已关闭！！！"
 				sleep 1
 			done
-		else
-			echo "$cluster_name 这个存档没有开启地上服务器！！！！！！"
 		fi
 
 		if [[ $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0  ]]; then
@@ -586,8 +584,6 @@ function close_server()
 				echo "地下服务器已关闭！！！"
 				sleep 1
 			done
-		else
-			echo "$cluster_name 这个存档没有开启地下服务器！！！！！！"
 		fi
 			
 			while :
@@ -614,7 +610,7 @@ function close_server()
 function restart_server()
 {
 	close_server
-	Filechose "$0"
+	Filechose
 }
 # 查看游戏服务器状态
 function check_server()
