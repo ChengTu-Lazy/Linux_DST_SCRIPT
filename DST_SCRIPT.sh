@@ -10,7 +10,7 @@
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
-
+# 2022/07/08 更换下载地址，加快更新脚本速度
 : "
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
@@ -78,7 +78,7 @@ function get_mew_version()
 	echo "下载时间超过10s，就是网络问题，请CTRL+C强制退出，再次尝试，实在不行手动下载最新的。"
 	mkdir "$HOME/clone_tamp"
 	cd "$HOME/clone_tamp" || exit
-	git clone https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git
+	git clone https://github.com.cnpmjs.org/ChengTu-Lazy/Linux_DST_SCRIPT.git
 	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
 	rm -rf "$HOME/clone_tamp"
 	cd "$HOME" || exit
