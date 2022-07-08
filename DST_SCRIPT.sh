@@ -243,8 +243,15 @@ function auto_update()
 	function start_server()
 	{
 		Addmod
-		screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
-		screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
+		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
+		if [ flag == 1 ];then
+			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
+			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
+		elif [ flag == 2 ];then
+			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
+		elif [ flag == 4 ];then
+			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
+		fi
 		if [ \"\$(screen -ls | grep -c \"DST_Master \"$cluster_name\"\")\" -gt 0 ];then
 			while :
 			do
@@ -450,7 +457,7 @@ function StartCaves()
 	gamesPath=\"$DST_game_path/bin\"
 	cd "\"\$gamesPath\" \|\| exit"
 	run_shared=(./dontstarve_dedicated_server_nullrenderer)
-	run_shared+=(-persistent_storage_root ~/.klei -conf_dir DoNotStarveTogether)
+	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
 	run_shared+=(-monitor_parent_process $)
 	\"\${run_shared[@]}\" -shard Caves" > "${DST_save_path}"/"$cluster_name"/startcaves.sh
@@ -467,7 +474,7 @@ function StartMaster()
 	gamesPath=\"$DST_game_path/bin\"
 	cd "\"\$gamesPath\" \|\| exit"
 	run_shared=(./dontstarve_dedicated_server_nullrenderer)
-	run_shared+=(-persistent_storage_root ~/.klei -conf_dir DoNotStarveTogether)
+	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
 	run_shared+=(-monitor_parent_process $)
 	\"\${run_shared[@]}\" -shard Master " > "${DST_save_path}"/"$cluster_name"/startmaster.sh
