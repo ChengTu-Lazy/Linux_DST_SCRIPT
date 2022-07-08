@@ -78,7 +78,7 @@ function get_mew_version()
 	echo "下载时间超过10s，就是网络问题，请CTRL+C强制退出，再次尝试，实在不行手动下载最新的。"
 	mkdir "$HOME/clone_tamp"
 	cd "$HOME/clone_tamp" || exit
-	git clone https://github.com.cnpmjs.org/ChengTu-Lazy/Linux_DST_SCRIPT.git
+	git clone https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git
 	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
 	rm -rf "$HOME/clone_tamp"
 	cd "$HOME" || exit
@@ -646,6 +646,9 @@ function list_all_mod()
 # 准备环境
 function PreLibrary()
 {
+	if [ ! -d "/usr/local/bin" ]; then
+		sudo wget http://cgit.killf.info/cgit_linux_latest -O /usr/local/bin/cgit && sudo chmod 755 /usr/local/bin/cgit
+	fi
 	if [ "$os" == "Ubuntu" ];then
 	echo ""
 	echo "##########################"
