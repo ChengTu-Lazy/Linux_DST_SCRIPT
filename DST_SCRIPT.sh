@@ -10,7 +10,7 @@
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
-# 2022/07/08 更好的支持多服务器开服，对于开启已开启服务器的行为做出反应
+# 2022/07/08 更好的支持多服务器开服，对于开启已开启服务器的行为做出反应,添加进行git加速的选项
 
 : "
 功能如下：
@@ -21,13 +21,19 @@
 "
 
 ##全局默认变量
-DST_SCRIPT_version="1.3"
-DST_conf_dirname="DoNotStarveTogether"   
-DST_conf_basedir="$HOME/.klei" 
+#脚本版本
+DST_SCRIPT_version="1.32"
+# git加速链接
+use_acceleration_url="hub.fastgit.xyz/"
+# 饥荒存档位置
 DST_save_path="$HOME/.klei/DoNotStarveTogether"
+# 脚本开启的服务器版本
 DST_game_version="正式版"
+# 当前游戏位置
 DST_game_path="$HOME/dst"
+# 当前游戏的分支位置
 DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
+# 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
 # 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 flag=1
@@ -85,12 +91,26 @@ function console()
 # 获取最新版脚本
 function get_mew_version()
 {
-	echo "下载时间超过10s，就是网络问题，请CTRL+C强制退出，再次尝试，实在不行手动下载最新的。"
+	if [ -d "$HOME/clone_tamp" ]; then
+		rm -rf "$HOME/clone_tamp"
+	fi
+	clear
+	echo "下载时间超过10s,就是网络问题,请CTRL+C强制退出,再次尝试,实在不行手动下载最新的。"
 	mkdir "$HOME/clone_tamp"
 	cd "$HOME/clone_tamp" || exit
-	git clone https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git
+
+	echo "是否使用git加速链接下载?"
+	echo "请输入 Y/y 同意 或者 N/n 拒绝并使用官方链接,推荐使用加速链接,失效了再用原版链接"
+	read -r use_acceleration
+	if [ "${use_acceleration}" == "Y" ] || [ "${use_acceleration}" == "y" ]; then
+		git clone "https://${use_acceleration_url}/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+	elif [ "${use_acceleration}" == "N" ] || [ "${use_acceleration}" == "n" ]; then
+		git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+	else
+		echo "输入有误，请重新输入"
+		get_mew_version
+	fi
 	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
-	rm -rf "$HOME/clone_tamp"
 	cd "$HOME" || exit
 	clear
 	./DST_SCRIPT.sh
@@ -102,7 +122,7 @@ function auto_update()
 	Cluster_bath="${DST_save_path}"/"$cluster_name"
 	ugc_mods_path="${DST_game_path}/ugc_mods"
 	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
-	masterchatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/server_log.txt"
+	masterchatlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	cd "$HOME" || exit
 	cd "${Cluster_bath}" || exit
 	# 配置auto_update.sh
@@ -303,16 +323,16 @@ function auto_update()
 		cd \"${DST_game_path}\"/mods || exit
 		rm -rf dedicated_server_mods_setup.lua
 		sleep 0.1
-		if [ -e \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua\" ]; then
-			grep \"\\\"workshop\" < \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
+		if [ -e \"${DST_save_path}/$cluster_name/Master/modoverrides.lua\" ]; then
+			grep \"\\\"workshop\" < \"${DST_save_path}/$cluster_name/Master/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo \"ServerModSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
 				echo \"ServerModCollectionSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
 				sleep 0.5
 				echo \"\$line Mod添加完成\"
 			done
-		elif [ -e \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua\" ]; then
-			grep \"\\\"workshop\" < \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
+		elif [ -e \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" ]; then
+			grep \"\\\"workshop\" < \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo \"ServerModSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
 				echo \"ServerModCollectionSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
@@ -346,16 +366,16 @@ function addmod()
 	sleep 0.1
 	echo "" >>dedicated_server_mods_setup.lua
 	sleep 0.1
-		if [ -e "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua" ]; then
-			grep "\"workshop" < "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
+		if [ -e "${DST_save_path}/$cluster_name/Master/modoverrides.lua" ]; then
+			grep "\"workshop" < "${DST_save_path}/$cluster_name/Master/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo "ServerModSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 				echo "ServerModCollectionSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 				sleep 0.05
 				echo "$line Mod添加完成"
 			done
-		elif [ -e "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua" ]; then 
-			grep "\"workshop" < "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
+		elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then 
+			grep "\"workshop" < "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo "ServerModSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 				echo "ServerModCollectionSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
@@ -392,11 +412,11 @@ function start_server()
 			echo "该服务器已开启地下服务器，请先关闭再启动！！"
 		else 
 			# 判断是否有token文件
-			cd "$HOME/.klei/DoNotStarveTogether/$cluster_name"|| exit
+			cd "${DST_save_path}/$cluster_name"|| exit
 			if [ ! -e "cluster_token.txt" ]; then
 				while [ ! -e "cluster_token.txt" ]; do
 					echo "该存档没有token文件,是否自动添加作者的token"
-					echo "请输入 Y 同意 或者 N 拒绝并自己提供一个"
+					echo "请输入 Y/y 同意 或者 N/n 拒绝并自己提供一个"
 					read -r token_yes
 					if [ "$token_yes" == "Y" ] ||  [ "$token_yes" == "y" ]; then
 						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" > "cluster_token.txt"
@@ -478,8 +498,8 @@ function StartMaster()
 #检查是否成功开启
 function start_serverCheck()
 {
-	masterchatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/server_log.txt"
-	caveschatlog_path="${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/server_log.txt"
+	masterchatlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
+	caveschatlog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 	if [ "$(screen -ls | grep -c "DST_Master $cluster_name")" -gt 0 ];then
 		while :
 		do
@@ -750,7 +770,7 @@ function prepare()
 		mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
-		mkdir "$HOME/.klei/DoNotStarveTogether"
+		mkdir "${DST_save_path}"
 		cd "$HOME/steamcmd" || exit 
 		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
 		tar -xvzf steamcmd_linux.tar.gz
