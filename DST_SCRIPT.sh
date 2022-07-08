@@ -26,7 +26,7 @@ DST_game_version="正式版"
 DST_game_path="$HOME/dst"
 DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
-# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 flag=1
 
 #主菜单
@@ -390,7 +390,7 @@ function start_server()
 			if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
 				flag=4
 			else
-				flag=5
+				flag=7
 			fi
 			if [ -d "${DST_save_path}/$cluster_name/Caves" ] ; then
 				flag=$((flag - 3))
@@ -398,14 +398,18 @@ function start_server()
 				flag=$((flag - 2))
 			fi
 			case $flag in
+			# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 				1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;
 				;;
 				2)addmod;StartMaster;auto_update;start_serverCheck;
 				;;
-				3)echo "存档没有内容，请自行创建！！！"
+				3)echo "这行纯粹凑字数,没用的" 
 				;;
 				4)addmod;StartCaves;auto_update;start_serverCheck;
 				;;
+				5)echo "存档没有内容，请自行创建！！！"
+				;;
+				
 			esac
 		else
 			echo "存档不存在，请自行创建！！！" 
@@ -417,7 +421,7 @@ function Filechose()
 	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
 		flag=4
 	else
-		flag=5
+		flag=7
 	fi
 	if [ -d "${DST_save_path}/$cluster_name/Caves" ] ; then
 		flag=$((flag - 3))
@@ -425,13 +429,16 @@ function Filechose()
 		flag=$((flag - 2))
 	fi
 	case $flag in
+	# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 		1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;
 		;;
 		2)addmod;StartMaster;auto_update;start_serverCheck;
 		;;
-		3)echo "存档没有内容，请自行创建！！！"
+		3)echo "这行纯粹凑字数,没用的" 
 		;;
 		4)addmod;StartCaves;auto_update;start_serverCheck;
+		;;
+		5)echo "存档没有内容，请自行创建！！！"
 		;;
 	esac
 }
