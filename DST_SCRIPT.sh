@@ -285,7 +285,7 @@ function auto_update()
 		cd \"${DST_game_path}\"/mods || exit
 		rm -rf dedicated_server_mods_setup.lua
 		sleep 0.1
-		if [ -d \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua\" ]; then
+		if [ -e \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua\" ]; then
 			grep \"\\\"workshop\" < \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo \"ServerModSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
@@ -293,7 +293,7 @@ function auto_update()
 				sleep 0.5
 				echo \"\$line Mod添加完成\"
 			done
-		else 
+		elif [ -e \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua\" ]; then
 			grep \"\\\"workshop\" < \"${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo \"ServerModSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
@@ -328,7 +328,7 @@ function addmod()
 	sleep 0.1
 	echo "" >>dedicated_server_mods_setup.lua
 	sleep 0.1
-		if [ -d "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua" ]; then
+		if [ -e "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua" ]; then
 			grep "\"workshop" < "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Master/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo "ServerModSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
@@ -336,7 +336,7 @@ function addmod()
 				sleep 0.05
 				echo "$line Mod添加完成"
 			done
-		else 
+		elif [ -e "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua" ]; then 
 			grep "\"workshop" < "${DST_conf_basedir}/${DST_conf_dirname}/$cluster_name/Caves/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
 			do
 				echo "ServerModSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
