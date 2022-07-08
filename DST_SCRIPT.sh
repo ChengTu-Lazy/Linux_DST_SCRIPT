@@ -21,7 +21,7 @@
 "
 
 ##全局默认变量
-DST_SCRIPT_version="V1.3"
+DST_SCRIPT_version="1.3"
 DST_conf_dirname="DoNotStarveTogether"   
 DST_conf_basedir="$HOME/.klei" 
 DST_save_path="$HOME/.klei/DoNotStarveTogether"
@@ -32,26 +32,33 @@ os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' 
 # 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 flag=1
 
+#文本居中显示
+
+
 #主菜单
 function Main()
 {
     clear
     echo "                                                                                  "
-    echo "                                                                                  "
-	printf  '=%.0s' {1..27}
-    echo -e "  当前服务器版本为${DST_game_version}  \c"
-	echo -e "  当前服务器脚本版本为${DST_SCRIPT_version}  \c"
-    printf  '=%.0s' {1..27}
+	tput setaf 2 
+	echo "==========================================================================================================="
+	echo -e "                                            \c"
+	printf "%-40s\n"  "服务器版本为${DST_game_version}"
+	echo -e "                                              \c"
+	tput setaf 3 
+	printf "%-40s\n" "脚本版本为V${DST_SCRIPT_version}"
+	tput setaf 2 
+    echo "==========================================================================================================="
 	while :
 	do
 		echo "                                                                                  "
-		echo "     [1]更新服务器                [2]启动服务器         [3]关闭饥荒服务器"
+		echo "		[1]更新服务器              [2]启动服务器             [3]关闭饥荒服务器			"
 		echo "                                                                                  "
-		echo "     [4]查看游戏服务器状态         [5]控制台             [6]重启服务器"
+		echo "		[4]查看服务器状态          [5]控制台                 [6]重启服务器"
 		echo "                                                                                  "
-		echo "     [7]更换到测试服版本           [8]查看存档已下载mod  [9]获取最新脚本			   "
+		echo "		[7]更换到测试服版本        [8]查看存档mod            [9]获取最新脚本			   "
 		echo "                                                                                  "
-		printf  '=%.0s' {1..80}
+		echo "==========================================================================================================="
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号：\e[0m"
 		read -r main1
@@ -529,8 +536,9 @@ function start_serverCheck()
 # 关闭服务器
 function close_server()
 {
-	screen -ls
+	printf  '=%.0s' {1..76}
 	echo ""
+	screen -ls
 	printf  '=%.0s' {1..28}
 	echo -e "请输入要关闭的存档名\c"
 	printf  '=%.0s' {1..28}
@@ -635,6 +643,7 @@ function check_server()
 # 列出所有的mod
 function list_all_mod()
 {
+	tput setaf 2 
 	clear 
 	printf  '=%.0s' {1..26}
 	echo -e "存档目录\c"
@@ -774,6 +783,7 @@ function change_game_version()
 	    echo "更改服务端版本为测试版！"	
 	    DST_game_version="测试版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
+		DST_game_path="$HOME/dst_beta"
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ] ; then
 			cd "$HOME/steamcmd" || exit
@@ -783,6 +793,7 @@ function change_game_version()
         echo "更改服务端版本为正式版！"	
 	    DST_game_version="正式版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
+		DST_game_path="$HOME/dst"
 		cd "$HOME/dst" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
