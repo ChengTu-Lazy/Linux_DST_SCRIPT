@@ -10,7 +10,6 @@
 # 2022/07/04 新添保护进程功能，崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
-# 2022/07/08 更换下载地址，加快更新脚本速度
 : "
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
@@ -646,9 +645,6 @@ function list_all_mod()
 # 准备环境
 function PreLibrary()
 {
-	if [ ! -d "/usr/local/bin" ]; then
-		sudo wget http://cgit.killf.info/cgit_linux_latest -O /usr/local/bin/cgit && sudo chmod 755 /usr/local/bin/cgit
-	fi
 	if [ "$os" == "Ubuntu" ];then
 	echo ""
 	echo "##########################"
