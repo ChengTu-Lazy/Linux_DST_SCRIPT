@@ -22,7 +22,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.32"
+DST_SCRIPT_version="1.33"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -62,7 +62,7 @@ function Main()
 		echo "                                                                                  "
 		echo "		[4]查看服务器状态          [5]控制台                 [6]重启服务器"
 		echo "                                                                                  "
-		echo "		[7]更换到测试服版本        [8]查看存档mod            [9]获取最新脚本			   "
+		echo "		[7]更换服务器版本          [8]查看存档mod            [9]获取最新脚本			   "
 		echo "                                                                                  "
 		echo "==========================================================================================================="
 		echo "                                                                                  "
@@ -275,12 +275,12 @@ function auto_update()
 	{
 		Addmod
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-		if [ flag == 1 ];then
+		if [ \$flag == 1 ];then
 			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
 			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-		elif [ flag == 2 ];then
+		elif [ \$flag == 2 ];then
 			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
-		elif [ flag == 4 ];then
+		elif [ \$flag == 4 ];then
 			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
 		fi
 		if [ \"\$(screen -ls | grep -c \"DST_Master \"$cluster_name\"\")\" -gt 0 ];then
