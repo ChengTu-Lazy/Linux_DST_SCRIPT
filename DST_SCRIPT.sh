@@ -122,7 +122,8 @@ function auto_update()
 	Cluster_bath="${DST_save_path}"/"$cluster_name"
 	ugc_mods_path="${DST_game_path}/ugc_mods"
 	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
-	masterchatlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
+	masterlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
+	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 	cd "$HOME" || exit
 	cd "${Cluster_bath}" || exit
 	# 配置auto_update.sh
@@ -136,16 +137,18 @@ function auto_update()
 	function CheckProcess()
 	{
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ]; then
+		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
-		elif [ \"\$flag\" == 2 ]; then
-			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 ]]; then
+			if [[ \$(grep -c \"Operation too slow. Less than 5 bytes/sec transferred the last 60 seconds\" \"${masterlog_path}\") -gt 0 ]]; then
 				restart_server
 			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
+				restart_server
+			fi
+			if [[ \$(grep -c \"Operation too slow. Less than 5 bytes/sec transferred the last 60 seconds\" \"${caveslog_path}\") -gt 0 ]]; then
 				restart_server
 			fi
 		fi
@@ -184,27 +187,33 @@ function auto_update()
 		echo \"\"\"\${DST_now}\"\": 同步服务端更新进程正在运行。。。\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
 		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt
-		if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterchatlog_path}\") -gt  0 ]]; then
-			DST_has_mods_update=true
-			DST_now=\$(date +\"%D %T\")
-			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
-		elif [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
-			DST_has_mods_update=true
-			DST_now=\$(date +\"%D %T\")
-			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
-		else
-			NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
-			if [ \${NeedsUpdate} == 0 ]
-			then
-				DST_has_mods_update=false
-				echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
-			else
+		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
+			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
-				echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
+				DST_now=\$(date +\"%D %T\")
 			fi
+		elif [ \"\$flag\" == 4 ]; then
+			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				DST_has_mods_update=true
+				DST_now=\$(date +\"%D %T\")
+			fi
+			if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
+					DST_has_mods_update=true
+					DST_now=\$(date +\"%D %T\")
+			fi
+		NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
+		if [ \${NeedsUpdate} == 0 ]
+		then
+			DST_has_mods_update=false
+		else
+			DST_has_mods_update=true
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
+			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
 			restart_server
+		elif [  \${DST_has_mods_update} == false ]; then
+			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
 		fi
 	}
 	# 重启服务器
@@ -288,7 +297,7 @@ function auto_update()
 			do
 				sleep 2
 				echo \"地上服务器开启中，请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$masterchatlog_path\") -gt 0 ]];then
+				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 ]];then
 					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g\')
 					if [ \"\${NeedsDownload}\" -ne 0 ]; then
 						restart_server 
