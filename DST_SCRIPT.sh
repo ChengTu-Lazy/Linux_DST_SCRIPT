@@ -29,6 +29,7 @@ use_acceleration_url="hub.fastgit.xyz/"
 DST_save_path="$HOME/.klei/DoNotStarveTogether"
 # 脚本开启的服务器版本
 DST_game_version="正式版"
+DST_game_version_reverse="测试版"
 # 当前游戏位置
 DST_game_path="$HOME/dst"
 # 当前游戏的分支位置
@@ -58,11 +59,11 @@ function Main()
 	while :
 	do
 		echo "                                                                                  "
-		echo "		[1]更新服务器              [2]启动服务器             [3]关闭饥荒服务器			"
+		echo "	[1]更新服务器                             [2]启动服务器                     [3]关闭饥荒服务器			"
 		echo "                                                                                  "
-		echo "		[4]查看服务器状态          [5]控制台                 [6]重启服务器"
+		echo "	[4]查看服务器状态                         [5]控制台                         [6]重启服务器"
 		echo "                                                                                  "
-		echo "		[7]更换服务器版本          [8]查看存档mod            [9]获取最新脚本			   "
+		echo "	[7]更换服务器版本为${DST_game_version_reverse}                 [8]查看存档mod                    [9]获取最新脚本			   "
 		echo "                                                                                  "
 		echo "==========================================================================================================="
 		echo "                                                                                  "
@@ -694,12 +695,11 @@ function list_all_mod()
 	echo ""
 	temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
 	if [ -d "$temp_mods_path" ]; then
-		for i in $( ls -l $temp_mods_path | awk '/^d/ {print $NF}' | cut -d '-' -f 2 )
+		for i in $( find "/home/ubuntu/dst/ugc_mods/bh/Master/content/322330" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
 		do
 			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
 				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
 				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
-			
 			fi
 		done
 		echo ""
@@ -810,6 +810,7 @@ function change_game_version()
 	if [[ ${DST_game_version} == "正式版" ]]; then
 	    echo "更改服务端版本为测试版！"	
 	    DST_game_version="测试版"
+		DST_game_version_reverse="正式版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
 		DST_game_path="$HOME/dst_beta"
 		cd "$HOME/dst_beta" || exit
@@ -820,6 +821,7 @@ function change_game_version()
     else
         echo "更改服务端版本为正式版！"	
 	    DST_game_version="正式版"
+		DST_game_version_reverse="测试版"
 		DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
 		DST_game_path="$HOME/dst"
 		cd "$HOME/dst" || exit
