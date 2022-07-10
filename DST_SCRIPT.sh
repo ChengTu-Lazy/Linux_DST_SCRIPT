@@ -22,7 +22,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.3.4"
+DST_SCRIPT_version="1.3.5"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -129,10 +129,11 @@ function auto_update()
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
 	##配置常量
-	DST_has_game_update=false
 	DST_now=\$(date +\"%D %T\")
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	flag=$flag
+	# 游戏版本
+	DST_game_version=\"${DST_game_version}\"
 	#查看进程执行情况
 	function CheckProcess()
 	{
@@ -158,7 +159,7 @@ function auto_update()
 	{
 		#先更新服务器副本文件
 		cd $HOME/steamcmd || exit
-		if [[ \"${DST_game_version}\" == \"测试版\" ]]; then
+		if [[ \"\${DST_game_version}\" == \"测试版\" ]]; then
 			echo \"正在同步测试版游戏服务端。\"	
 			./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
 			rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
@@ -173,11 +174,9 @@ function auto_update()
 		fi
 		#查看副本文件中的版本号和当前游戏的版本号是否一致
 		if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
-		    DST_has_game_update=true
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端有更新!\e[0m\"	
 			UpdateServer
 		else
-		    DST_has_game_update=false
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端没有更新!\e[0m\"	
 		fi
 	}
@@ -198,13 +197,13 @@ function auto_update()
 				DST_has_mods_update=true
 				DST_now=\$(date +\"%D %T\")
 			fi
-			if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
-					DST_has_mods_update=true
-					DST_now=\$(date +\"%D %T\")
-			fi
 		fi
-		NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
-		if [ \${NeedsUpdate} == 0 ]
+		if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
+			DST_has_mods_update=true
+			DST_now=\$(date +\"%D %T\")
+		fi
+		NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
+		if [ \"\${NeedsUpdate}\" == 0 ]
 		then
 			DST_has_mods_update=false
 		else
@@ -228,7 +227,7 @@ function auto_update()
 	{
 		Shutdown
 		cd $HOME/steamcmd || exit
-		if [[ \"${DST_game_version}\" == \"测试版\" ]]; then
+		if [[ \"\${DST_game_version}\" == \"测试版\" ]]; then
 			echo \"正在同步测试版游戏服务端。\"
 			./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
 		else
@@ -292,13 +291,13 @@ function auto_update()
 		elif [ \$flag == 4 ];then
 			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
 		fi
-		if [ \"\$(screen -ls | grep -c \"DST_Master \"$cluster_name\"\")\" -gt 0 ];then
+		if [ \"\$(screen -ls | grep -c \"DST_Master $cluster_name\")\" -gt 0 ];then
 			while :
 			do
 				sleep 2
 				echo \"地上服务器开启中，请稍后。。。\"
 				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 ]];then
-					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g\')
+					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
 					if [ \"\${NeedsDownload}\" -ne 0 ]; then
 						restart_server 
 					else
@@ -313,7 +312,7 @@ function auto_update()
 			do
 				sleep 1
 				echo \"地下服务器开启中，请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$caveschatlog_path\") -gt 0 ]];then
+				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 ]];then
 					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Caves/appworkshop_322330.acf | sed 's/\"//g')
 					if [ \"\${NeedsDownload}\" -ne 0 ]; then
 						restart_server 
@@ -508,7 +507,7 @@ function StartMaster()
 function start_serverCheck()
 {
 	masterchatlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
-	caveschatlog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
+	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 	if [ "$(screen -ls | grep -c "DST_Master $cluster_name")" -gt 0 ];then
 		while :
 		do
@@ -524,10 +523,10 @@ function start_serverCheck()
 					break
 				fi
 			fi
-			if  [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0  ]]; then
+			if  [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0  ]]; then
 				echo "服务器开启未成功，请执注意令牌是否成功设置且有效。"
 				break
-			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
+			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，可能网络有点问题，正在自动重启。"
 				sleep 3
 				close_server_
@@ -540,7 +539,7 @@ function start_serverCheck()
 		do
 			sleep 1
 			echo "地下服务器开启中，请稍后。。。"
-			if [[ $(grep "Sim paused" -c "$caveschatlog_path") -gt 0 ]];then
+			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 ]];then
 				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Caves/appworkshop_322330.acf | sed 's/"//g')
 				if [ "${NeedsDownload}" -ne 0 ]; then
 					close_server_
@@ -550,10 +549,10 @@ function start_serverCheck()
 					break
 				fi
 			fi
-			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveschatlog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
+			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，请注意令牌是否成功设置且有效。"
 				break
-			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveschatlog_path") -gt 0 ]]; then
+			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，可能网络有点问题，正在自动重启。"
 				sleep 3
 				close_server_
@@ -846,4 +845,3 @@ function update_game()
 }
 prepare
 Main
-
