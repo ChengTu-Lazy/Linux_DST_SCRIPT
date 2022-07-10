@@ -202,6 +202,7 @@ function auto_update()
 					DST_has_mods_update=true
 					DST_now=\$(date +\"%D %T\")
 			fi
+		fi
 		NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
 		if [ \${NeedsUpdate} == 0 ]
 		then
@@ -234,7 +235,6 @@ function auto_update()
 			echo \"正在同步正式版游戏服务端。\"
 			./steamcmd.sh +force_install_dir \"$HOME/dst\" +login anonymous +app_update 343050 validate +quit 
 		fi
-		DST_has_game_update=false
 		start_server
 	}
 
