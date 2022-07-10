@@ -22,7 +22,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.33"
+DST_SCRIPT_version="1.3.4"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -50,9 +50,9 @@ function Main()
 	echo "==========================================================================================================="
 	echo -e "                                            \c"
 	printf "%-40s\n"  "服务器版本为${DST_game_version}"
-	echo -e "                                              \c"
+	echo -e "                                             \c"
 	tput setaf 3 
-	printf "%-40s\n" "脚本版本为V${DST_SCRIPT_version}"
+	printf "%-40s\n" "脚本版本为${DST_SCRIPT_version}"
 	tput setaf 2 
     echo "==========================================================================================================="
 	while :
