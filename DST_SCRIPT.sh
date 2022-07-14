@@ -295,12 +295,7 @@ function auto_update()
 		if [ \$flag == 1 ];then
 			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
 			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-		elif [ \$flag == 2 ];then
-			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
-		elif [ \$flag == 4 ];then
-			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-		fi
-		if [ \"\$(screen -ls | grep -c \"DST_Master $cluster_name\")\" -gt 0 ];then
+			if [ \"\$(screen -ls | grep -c \"DST_Master $cluster_name\")\" -gt 0 ];then
 			while :
 			do
 				sleep 2
@@ -310,17 +305,44 @@ function auto_update()
 				break
 				fi
 			done
-		fi
-		if [ \"\$(screen -ls | grep -c \"DST_Caves $cluster_name\")\" -gt 0 ];then
-			while :
-			do
-				sleep 1
-				echo \"地下服务器开启中，请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-					echo \"地下服务器开启成功!!!\"
-					break
-				fi
-			done
+			fi
+			if [ \"\$(screen -ls | grep -c \"DST_Caves $cluster_name\")\" -gt 0 ];then
+				while :
+				do
+					sleep 1
+					echo \"地下服务器开启中，请稍后。。。\"
+					if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+						echo \"地下服务器开启成功!!!\"
+						break
+					fi
+				done
+			fi
+		elif [ \$flag == 2 ];then
+			screen -dmS  \"DST_Master $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\"
+			if [ \"\$(screen -ls | grep -c \"DST_Master $cluster_name\")\" -gt 0 ];then
+				while :
+				do
+					sleep 2
+					echo \"地上服务器开启中，请稍后。。。\"
+					if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
+						echo \"地上服务器开启成功!!!\"
+						break
+					fi
+				done
+			fi
+		elif [ \$flag == 4 ];then
+			screen -dmS  \"DST_Caves $cluster_name\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
+			if [ \"\$(screen -ls | grep -c \"DST_Caves $cluster_name\")\" -gt 0 ];then
+				while :
+				do
+					sleep 1
+					echo \"地下服务器开启中，请稍后。。。\"
+					if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+						echo \"地下服务器开启成功!!!\"
+						break
+					fi
+				done
+			fi
 		fi
 	}
 	#自动添加存档所需的mod
@@ -524,10 +546,10 @@ function start_serverCheck()
 					break
 				fi
 			fi
-			if  [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0  ]]; then
+			if  [[ $(grep "Your Server Will Not Start !!!" -c "$masterchatlog_path") -gt 0  ]]; then
 				echo "服务器开启未成功，请执注意令牌是否成功设置且有效。"
 				break
-			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
+			elif [[ $(grep "Failed to send shard broadcast message" -c "$masterchatlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功，可能网络有点问题，正在自动重启。"
 				sleep 3
 				close_server_
