@@ -11,7 +11,7 @@
 # 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
 # 2022/07/08 更好的支持多服务器开服，对于开启已开启服务器的行为做出反应,添加进行git加速的选项
-
+# 2022/07/14 修复无限重启的bug
 
 : "
 功能如下：
@@ -23,7 +23,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.3.5"
+DST_SCRIPT_version="1.3.6"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -337,6 +337,7 @@ function auto_update()
 				echo \"ServerModCollectionSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
 				sleep 0.5
 				echo \"\$line Mod添加完成\"
+				break
 			done
 		elif [ -e \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" ]; then
 			grep \"\\\"workshop\" < \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
@@ -380,6 +381,7 @@ function addmod()
 				echo "ServerModCollectionSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 				sleep 0.05
 				echo "$line Mod添加完成"
+				break
 			done
 		elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then 
 			grep "\"workshop" < "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
