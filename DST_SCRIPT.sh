@@ -12,6 +12,7 @@
 # 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法，并且适配更多linux系统
 # 2022/07/08 更好的支持多服务器开服，对于开启已开启服务器的行为做出反应,添加进行git加速的选项
 
+
 : "
 功能如下：
 不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
@@ -139,7 +140,7 @@ function auto_update()
 	function CheckProcess()
 	{
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
+		if [ \"\$flag\" == 1 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 || \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
@@ -148,6 +149,13 @@ function auto_update()
 			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(screen -ls | grep -c \"DST_Caves $cluster_name\") -ne 1 ]]; then
+				restart_server
+			fi
+			if [[ \$(grep -c \"Operation too slow. Less than 5 bytes/sec transferred the last 60 seconds\" \"${caveslog_path}\") -gt 0 ]]; then
+				restart_server
+			fi
+		elif [ \"\$flag\" == 2 ]; then
+			if [[ \$(screen -ls | grep -c \"DST_Master $cluster_name\") -ne 1 ]]; then
 				restart_server
 			fi
 			if [[ \$(grep -c \"Operation too slow. Less than 5 bytes/sec transferred the last 60 seconds\" \"${caveslog_path}\") -gt 0 ]]; then
@@ -189,6 +197,7 @@ function auto_update()
 		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
+			# NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
 			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
 				DST_now=\$(date +\"%D %T\")
@@ -198,17 +207,16 @@ function auto_update()
 				DST_has_mods_update=true
 				DST_now=\$(date +\"%D %T\")
 			fi
+		else
+			DST_has_mods_update=false
+			DST_now=\$(date +\"%D %T\")
 		fi
 		if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
 			DST_has_mods_update=true
 			DST_now=\$(date +\"%D %T\")
-		fi
-		NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
-		if [ \"\${NeedsUpdate}\" == 0 ]
-		then
-			DST_has_mods_update=false
 		else
-			DST_has_mods_update=true
+			DST_has_mods_update=false
+			DST_now=\$(date +\"%D %T\")
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
@@ -297,14 +305,9 @@ function auto_update()
 			do
 				sleep 2
 				echo \"地上服务器开启中，请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 ]];then
-					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
-					if [ \"\${NeedsDownload}\" -ne 0 ]; then
-						restart_server 
-					else
-						echo \"地上服务器开启成功!!!\"
-						break
-					fi
+				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
+				echo \"地上服务器开启成功!!!\"
+				break
 				fi
 			done
 		fi
@@ -313,14 +316,9 @@ function auto_update()
 			do
 				sleep 1
 				echo \"地下服务器开启中，请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 ]];then
-					NeedsDownload=\$(awk '/NeedsDownload/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Caves/appworkshop_322330.acf | sed 's/\"//g')
-					if [ \"\${NeedsDownload}\" -ne 0 ]; then
-						restart_server 
-					else
-						echo \"地下服务器开启成功!!!\"
-						break
-					fi
+				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+					echo \"地下服务器开启成功!!!\"
+					break
 				fi
 			done
 		fi
@@ -514,7 +512,7 @@ function start_serverCheck()
 		do
 			sleep 2
 			echo "地上服务器开启中，请稍后。。。"
-			if [[ $(grep "Sim paused" -c "$masterchatlog_path") -gt 0 ]];then
+			if [[ $(grep "Sim paused" -c "$masterchatlog_path") -gt 0 ||  $(grep "shard LUA is now ready!" -c "$masterchatlog_path") -gt 0 ]];then
 				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
 				if [ "${NeedsDownload}" -ne 0 ]; then
 					close_server_
@@ -540,7 +538,7 @@ function start_serverCheck()
 		do
 			sleep 1
 			echo "地下服务器开启中，请稍后。。。"
-			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 ]];then
+			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$caveslog_path") -gt 0 ]];then
 				NeedsDownload=$(awk '/NeedsDownload/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Caves/appworkshop_322330.acf | sed 's/"//g')
 				if [ "${NeedsDownload}" -ne 0 ]; then
 					close_server_
