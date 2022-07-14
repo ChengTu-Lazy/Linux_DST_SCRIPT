@@ -359,7 +359,6 @@ function auto_update()
 				echo \"ServerModCollectionSetup(\"\"\$line\"\")\">>${DST_game_path}/mods/dedicated_server_mods_setup.lua
 				sleep 0.5
 				echo \"\$line Mod添加完成\"
-				break
 			done
 		elif [ -e \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" ]; then
 			grep \"\\\"workshop\" < \"${DST_save_path}/$cluster_name/Caves/modoverrides.lua\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
@@ -403,7 +402,6 @@ function addmod()
 				echo "ServerModCollectionSetup(\"$line\")">>"${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 				sleep 0.05
 				echo "$line Mod添加完成"
-				break
 			done
 		elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then 
 			grep "\"workshop" < "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
