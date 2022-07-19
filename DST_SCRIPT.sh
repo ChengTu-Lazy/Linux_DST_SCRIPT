@@ -54,7 +54,7 @@ function Main()
 	printf "%-40s\n"  "服务器版本为${DST_game_version}"
 	echo -e "                                             \c"
 	tput setaf 3 
-	printf "%-40s\n" "脚本版本为${DST_SCRIPT_version}"
+	printf "%-40s\n" "脚本版本为${DST_SCRIPT_version}Beta"
 	tput setaf 2 
     echo "==========================================================================================================="
 	while :
