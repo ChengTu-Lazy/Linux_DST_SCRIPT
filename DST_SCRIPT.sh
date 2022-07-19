@@ -71,15 +71,15 @@ function Main()
 		echo -e "\e[92m请输入命令代号：\e[0m"
 		read -r main1
 		case $main1 in
-			1)update_game ;;
-			2)start_server ;;
-			3)close_server break;;
-			4)check_server break;;
-			5)console break;;
+			1)update_game;;
+			2)start_server;;
+			3)close_server;;
+			4)check_server;;
+			5)console;;
 			6)restart_server ;;
-			7)change_game_version break;;
-			8)list_all_mod break;;
-			9)get_mew_version break;;
+			7)change_game_version;;
+			8)list_all_mod;;
+			9)get_mew_version;;
 		esac
     done
 }
