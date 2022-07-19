@@ -47,7 +47,7 @@ c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
 #主菜单
 function Main()
 {
-	clear
+
 	tput setaf 2 
 	echo "==========================================================================================================="
 	echo -e "                                            \c"
@@ -71,12 +71,12 @@ function Main()
 		echo -e "\e[92m请输入命令代号：\e[0m"
 		read -r main1
 		case $main1 in
-			1)update_game break;;
-			2)start_server break;;
+			1)update_game ;;
+			2)start_server ;;
 			3)close_server break;;
 			4)check_server break;;
 			5)console break;;
-			6)restart_server break;;
+			6)restart_server ;;
 			7)change_game_version break;;
 			8)list_all_mod break;;
 			9)get_mew_version break;;
@@ -746,8 +746,20 @@ function list_all_mod()
 	printf  '=%.0s' {1..27}
 	echo ""
 	temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
-	if [ -d "$temp_mods_path" ]; then
-		for i in $( find "/home/ubuntu/dst/ugc_mods/bh/Master/content/322330" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
+	if [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Master/content/322330" ]; then
+		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
+		for i in $( find "$temp_mods_path" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
+		do
+			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
+				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
+				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
+			fi
+		done
+		echo ""
+		printf  '=%.0s' {1..80}
+	elif [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Caves/content/322330" ]; then
+		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Caves/content/322330
+		for i in $( find "$temp_mods_path" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
 		do
 			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
 				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
@@ -898,4 +910,5 @@ function update_game()
     fi
 }
 prepare
+clear
 Main column -t
