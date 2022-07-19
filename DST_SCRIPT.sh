@@ -619,7 +619,7 @@ function close_server()
 	echo ""
 	read -r cluster_name
 	if [ "$cluster_name" == "" ]; then
-			 Main
+			Main
 	else
 		echo ""
 		close_server_
@@ -650,11 +650,9 @@ function close_server_()
 				sleep 1.5
 				screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
 				echo -e "\n\e[92m地上服务器已关闭!!!                \e[0m"
-				
 				sleep 1
 			done
 		fi
-
 		if [[ $(screen -ls | grep -c "DST_Caves $cluster_name") -gt 0  ]]; then
 
 			for i in $(screen -ls | grep -w "DST_Caves $cluster_name" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
@@ -673,7 +671,6 @@ function close_server_()
 				sleep 1
 			done
 		fi
-			
 			while :
 			do
 				sleep 1
@@ -681,7 +678,6 @@ function close_server_()
 					echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
 				else
 				 	echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
-					clear
 					break
 				fi
 			done
