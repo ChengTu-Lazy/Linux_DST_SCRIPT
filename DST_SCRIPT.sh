@@ -14,7 +14,7 @@
 # 2022/07/14 修复无限重启的bug
 # 2022/07/18 新增记录开服时间功能，对关服理由进行了区分，更改脚本日志输出方式
 # 2022/07/22 新增控制台功能（回档，发送通知，复活全体玩家，查看服务器玩家情况），新增64位版本游戏服务器开启选项
-
+# 2022/07/23 新增备份功能，每次开启存档备份一次，每隔17280s(1/5天)自动备份一次档，位置在../Master/saves_bak和../Caves/saves_bak,超过二十个存档就会检测三天前的存档，如果有就会删除三天前的存档
 
 
 : "
@@ -27,7 +27,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.0"
+DST_SCRIPT_version="1.4.1"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -50,29 +50,29 @@ function Main()
 {
 
 	tput setaf 2 
-	echo "==========================================================================================================="
+		echo "==========================================================================================================="
 	echo -e "                                          \c"
 	printf "%-36s\n"  "服务器版本为${DST_game_version}"
 	echo -e "                                             \c"
 	tput setaf 3 
 	printf "%-40s\n" "脚本版本为${DST_SCRIPT_version}"
 	tput setaf 2 
-    echo "==========================================================================================================="
+    	echo "================================================================================================="
 	while :
 	do
 		echo "                                                                                  "
-		echo "	[1]更新服务器                             [2]启动服务器                     [3]关闭饥荒服务器			"
+		echo "	[1]重新安装依赖                 [2]启动服务器           [3]关闭饥荒服务器			"
 		echo "                                                                                  "
-		echo "	[4]查看服务器状态                         [5]控制台                         [6]重启服务器"
+		echo "	[4]查看服务器状态               [5]控制台               [6]重启服务器"
 		echo "                                                                                  "
-		echo "	[7]更换服务器版本                         [8]查看存档mod                    [9]获取最新脚本			   "
+		echo "	[7]更换服务器版本               [8]查看存档mod          [9]获取最新脚本			   "
 		echo "                                                                                  "
-		echo "==========================================================================================================="
+		echo "================================================================================================="
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
 		(case $main1 in
-			1)update_game;;
+			1)PreLibrary;;
 			2)start_server;;
 			3)close_server;;
 			4)check_server;;
@@ -88,7 +88,9 @@ function Main()
 # 控制台
 function console()
 {
-	printf  '=%.0s' {1..96}
+	printf  '=%.0s' {1..38}
+	echo -e "当前已开启的存档进程\c"
+	printf  '=%.0s' {1..38}
 	echo ""
 	screen -ls 
 	printf  '=%.0s' {1..38}
@@ -103,13 +105,14 @@ function console()
 		echo "                                                                                  "
 		echo "	[1]服务器信息          [2]回档          [3]发布通知			"
 		echo "                                                                                  "
-		echo "	[4]全体复活"
+		echo "	[4]全体复活            [5]查看玩家"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main2
 		get_process_name
+		get_server_log_path
 		(case $main2 in
 			1)serverinfo;;
 			2)echo "请输入你要回档的天数(1~5):"
@@ -125,6 +128,9 @@ function console()
 			4)
 			screen -r "$process_name" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
 			echo "已复活全体玩家！"
+			;;
+			5)
+			getplayerlist
 			;;
 		esac)
     done
@@ -146,27 +152,64 @@ function get_server_log_path()
 # 服务器信息
 function serverinfo()
 {
+	
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
-	get_process_name
 	getworldstate
-	# getpresentserver
-	# getplayernumber	
-	# getworldname
-	# getplayerlist
-	# echo -e "\e[31m版本：【$DST_game_version)房名: ($world_name) 密码: ($passkey) 人数: ($number/$maxplayer) ($gamemode)\e[0m"
-	echo -e "\e[33m天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
+	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
+	getplayerlist
 	getmonster
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
 		echo -e "\e[33m海象巢:($walrus_camp_master)个  触手怪:($tentacle_master)个  蜘蛛巢:($spiderden_master)个\e[0m"
 		echo -e "\e[33m高脚鸟巢:($tallbirdnest_master)个  猎犬丘:($houndmound_master)个  芦苇:($reeds_master)株  墓地:($mudi_master)个\e[0m"
 	fi
+	sleep 2
 	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
 		echo "===========================地下世界信息========================================"
 		echo -e "\e[33m触手怪:($tentacle_caves)个  蜘蛛巢:($spiderden_caves)个  芦苇:($reeds_caves)株\e[0m"
 		echo -e "\e[33m损坏的发条主教:($bishop_nightmare)个  损坏的发条战车:($rook_nightmare)个  损坏的发条骑士:($knight_nightmare)个\e[0m"
 	fi
     echo -e "\e[33m================================================================================\e[0m"
+}
+
+# 获取玩家列表
+function getplayerlist()
+{	
+	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
+	    allplayerslist=$( date +%s%3N )
+		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end$(printf \\r)"
+		sleep 5
+		list=$( grep "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		if [[ ! "$list" = "" ]]; then
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "$list"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "$list" > "${DST_save_path}"/"$cluster_name"/playerlist.txt
+		else
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+	        echo -e "\e[92m================================================================================\e[0m"
+			echo    "                                 当前服务器没有玩家"
+			echo -e "\e[92m================================================================================\e[0m"
+		fi
+	elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0  ]]; then	    
+	    allplayerslist=$( date +%s%3N )
+		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab)) end$(printf \\r)"
+		sleep 5
+		list=$( grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		if [[ ! "$list" = "" ]]; then
+		    echo -e "\e[92m服务器玩家列表:\e[0m"
+	        echo -e "\e[92m================================================================================\e[0m"
+			echo "$list"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "$list" > "${DST_save_path}"/"$cluster_name"/playerlist.txt
+		else
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+	        echo -e "\e[92m================================================================================\e[0m"
+			echo    "                                 当前服务器没有玩家"
+			echo -e "\e[92m================================================================================\e[0m"
+		fi
+	fi
 }
 
 # 获取怪物信息
@@ -235,8 +278,6 @@ function getmonster()
 # 获取世界状态
 function getworldstate()
 {
-	get_server_log_path
-	get_process_name
     presentseason=""
 	presentday=""
 	presentcycles=""
@@ -275,7 +316,6 @@ function getworldstate()
 	if [[ "$presentseason" == "winter" ]]; then
 		presentseason="冬天"
 	fi
-	
 	if [[ "$presentphase" == "day" ]]; then
 		presentphase="白天"
 	fi
@@ -285,7 +325,6 @@ function getworldstate()
 	if [[ "$presentphase" == "night" ]]; then
 		presentphase="黑夜"
 	fi
-	
 	if [[ "$presentmoonphase" == "new" ]]; then
 		presentmoonphase="新月"
 	fi
@@ -295,23 +334,19 @@ function getworldstate()
 	if [[ "$presentmoonphase" == "threequarter" || "$presentmoonphase" == "quarter" || "$presentmoonphase" == "half" ]]; then
 		presentmoonphase="缺月"
 	fi
-	
 	presenttemperature=${presenttemperature%.*}
-	
 	if [[ $( echo "$presentrain" | grep -c "true" ) -gt 0 ]]; then
 		presentrain="下雨"
 	fi
 	if [[ $( echo "$presentrain" | grep -c "false" ) -gt 0 ]]; then
 		presentrain="无雨"
 	fi
-	
 	if [[ $( echo "$presentsnow" | grep -c "true" ) -gt 0 ]]; then
 		presentsnow="下雪"
 	fi
 	if [[ $( echo "$presentsnow" | grep -c "false" ) -gt 0 ]]; then
 		presentsnow="无雪"
 	fi
-	
 }
 
 # 获取最新版脚本
@@ -351,12 +386,14 @@ function auto_update()
 	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
 	masterlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
+	master_saves_path="${DST_save_path}/$cluster_name/Master"
+	caves_saves_path="${DST_save_path}/$cluster_name/Caves"
 	cd "$HOME" || exit
 	cd "${Cluster_bath}" || exit
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
 	##配置常量
-	DST_now=\$(date +\"%D %T\")
+	DST_now=\$(date +%Y年%m月%d日%H:%M)
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	flag=$flag
 	# 游戏版本
@@ -412,6 +449,7 @@ function auto_update()
 	#查看游戏mod更新情况
 	function CheckModUpdate()
 	{
+		
 		echo \"\"\"\${DST_now}\"\": 同步服务端更新进程正在运行。。。\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
 		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt 
@@ -420,23 +458,18 @@ function auto_update()
 			# NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
 			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
-				DST_now=\$(date +\"%D %T\")
 			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
-				DST_now=\$(date +\"%D %T\")
 			fi
 		else
 			DST_has_mods_update=false
-			DST_now=\$(date +\"%D %T\")
 		fi
 		if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
 			DST_has_mods_update=true
-			DST_now=\$(date +\"%D %T\")
 		else
 			DST_has_mods_update=false
-			DST_now=\$(date +\"%D %T\")
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
@@ -581,18 +614,40 @@ function auto_update()
 			echo \"\$line Mod添加完成\"
 		done
 	}
-	
+	timecheck=0
 	# 保持运行
 	while :
 			do
-				i=1
-				(i++)
-				DST_now=\$(date +\"%D %T\")
+				a=\$((( timecheck%17280 )))
+				# 自动备份
+				if [ \"\$a\" == 0 ] || [ \"\$timecheck\" == 1 ];then
+					cd \"$master_saves_path\" || exit
+					if [ ! -d \"$master_saves_path/saves_bak\" ];then
+						mkdir saves_bak
+					fi
+					cd \"$master_saves_path/saves_bak\" || exit
+					master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+					if [ \"\$master_saves_bak\" -gt 21 ];then
+						find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+					fi
+					zip -r \"\${DST_now}\".zip $master_saves_path/save/
+
+					cd \"$caves_saves_path\" || exit			
+					if [ ! -d \"$caves_saves_path/saves_bak\" ];then
+						mkdir saves_bak
+					fi
+					cd \"$caves_saves_path/saves_bak\" || exit
+					caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+					if [ \"\$caves_saves_bak\" -gt 21 ];then
+						find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+					fi
+					zip -r \"\${DST_now}\".zip $master_saves_path/save/
+				fi
+				((timecheck++))
 				CheckProcess
 				CheckUpdate
 				CheckModUpdate
 				sleep 1
-				echo \"i== \$i\"
 			done
 	" > "${Cluster_bath}"/auto_update.sh
 	chmod 777 "${Cluster_bath}"/auto_update.sh
@@ -636,25 +691,25 @@ function addmod()
 function get_process_name()
 {
 	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "正式版64位" ]]; then
-		process_name_AutoUpdate="DST $cluster_name AutoUpdate"
+		export  process_name_AutoUpdate="DST $cluster_name AutoUpdate"
 		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
-			process_name_caves="DST_Caves $cluster_name"
-			process_name="DST_Caves $cluster_name"
+			export process_name_caves="DST_Caves $cluster_name"
+			export process_name="DST_Caves $cluster_name"
 		fi
 		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-			process_name_master="DST_Master $cluster_name"
-			process_name="DST_Master $cluster_name"
+			export process_name_master="DST_Master $cluster_name"
+			export process_name="DST_Master $cluster_name"
 		fi
 		
 	elif [[ $DST_game_version == "测试版32位" || $DST_game_version == "测试版64位" ]]; then
-		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
+		export process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
 		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
-			process_name_caves="DST_Caves_beta $cluster_name"
-			process_name="DST_Caves_beta $cluster_name"
+			export process_name_caves="DST_Caves_beta $cluster_name"
+			export process_name="DST_Caves_beta $cluster_name"
 		fi	
 		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-			process_name_master="DST_Master_beta $cluster_name"
-			process_name="DST_Master_beta $cluster_name"
+			export process_name_master="DST_Master_beta $cluster_name"
+			export process_name="DST_Master_beta $cluster_name"
 		fi
 	fi
 }
@@ -691,7 +746,7 @@ function start_server()
 	get_cluster_name
 	if [ "$cluster_name" == "" ]; then
 			Main
-	else
+	elif [ -d "${DST_save_path}/$cluster_name" ];then
 		get_process_name
 		if [ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ] ;then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
@@ -715,11 +770,10 @@ function start_server()
 					fi
 				done
 			fi
-			if [ -d "${DST_save_path}/$cluster_name" ];then
-				Filechose
-				get_process_name
-			fi
+			Filechose
 		fi
+	else
+		echo "未找到这个存档"
 	fi
 		
 		
@@ -832,9 +886,11 @@ function start_serverCheck()
 			fi
 			if  [[ $(grep "Your Server Will Not Start !!!" -c "$masterlog_path") -gt 0  ]]; then
 				echo "服务器开启未成功,请注意令牌是否成功设置且有效。"
+				close_server_
 				break
 			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$masterlog_path") -gt 0  ]]; then
-				echo "服务器开启未成功,端口冲突啦，改下端口吧！"
+				echo "地上服务器开启未成功,端口冲突啦，改下端口吧！"
+				close_server_
 				break
 			elif [[ $(grep "Failed to send shard broadcast message" -c "$masterlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
@@ -865,6 +921,11 @@ function start_serverCheck()
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,请注意令牌是否成功设置且有效。"
+				close_server_
+				break
+			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$caveslog_path") -gt 0  ]]; then
+				echo "服务器开启未成功,端口冲突啦，改下端口吧！"
+				close_server_
 				break
 			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
@@ -1003,7 +1064,6 @@ function list_all_mod()
     echo -e " $cluster_name存档已下载的mod如下: \c"
 	printf  '=%.0s' {1..27}
 	echo ""
-	temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
 	if [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Master/content/322330" ]; then
 		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
 		for i in $( find "$temp_mods_path" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
@@ -1045,6 +1105,7 @@ function PreLibrary()
 	sudo apt-get -y install screen
 	sudo apt-get -y install htop
 	sudo apt-get -y install gawk
+	sudo apt-get -y install zip unzip
 	# 加载 32bit 库
 	sudo apt-get -y install lib32gcc1
 	sudo apt-get -y install lib32stdc++6
@@ -1055,6 +1116,14 @@ function PreLibrary()
 	sudo apt-get -y install lib64stdc++6
 	sudo apt-get -y install libcurl4-gnutls-dev
 
+	if [ -f "/usr/lib/libcurl.so.4" ];then
+		ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
+	fi
+	if [ -f "/usr/lib64/libcurl.so.4" ];then
+		ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
+	fi
+
+
 	elif [ "$os" == "CentOS" ];then
 
 		echo ""
@@ -1063,7 +1132,12 @@ function PreLibrary()
 		echo "##########################"
 		echo ""
 		sudo yum -y update
+		sudo yum -y wget
 		sudo yum -y install tar wget screen
+		sudo yum -y install screen
+		sudo yum -y install htop
+		sudo yum -y install gawk
+		sudo yum -y install zip unzip
 		# 加载 32bit 库
 		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
 		# 加载 64bit 库
