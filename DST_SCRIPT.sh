@@ -621,27 +621,31 @@ function auto_update()
 				a=\$((( timecheck%17280 )))
 				# 自动备份
 				if [ \"\$a\" == 0 ] || [ \"\$timecheck\" == 1 ];then
-					cd \"$master_saves_path\" || exit
-					if [ ! -d \"$master_saves_path/saves_bak\" ];then
-						mkdir saves_bak
+					if [  -d \"$master_saves_path\" ];then
+						cd \"$master_saves_path\" || exit
+						if [ ! -d \"$master_saves_path/saves_bak\" ];then
+							mkdir saves_bak
+						fi
+						cd \"$master_saves_path/saves_bak\" || exit
+						master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+						if [ \"\$master_saves_bak\" -gt 21 ];then
+							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+						fi
+						zip -r \"\${DST_now}\".zip $master_saves_path/save/
 					fi
-					cd \"$master_saves_path/saves_bak\" || exit
-					master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-					if [ \"\$master_saves_bak\" -gt 21 ];then
-						find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+					if [ -d \"$caves_saves_path\" ];then
+						cd \"$caves_saves_path\" || exit			
+						if [ ! -d \"$caves_saves_path/saves_bak\" ];then
+							mkdir saves_bak
+						fi
+						cd \"$caves_saves_path/saves_bak\" || exit
+						caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+						if [ \"\$caves_saves_bak\" -gt 21 ];then
+							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+						fi
+						zip -r \"\${DST_now}\".zip $master_saves_path/save/
 					fi
-					zip -r \"\${DST_now}\".zip $master_saves_path/save/
-
-					cd \"$caves_saves_path\" || exit			
-					if [ ! -d \"$caves_saves_path/saves_bak\" ];then
-						mkdir saves_bak
-					fi
-					cd \"$caves_saves_path/saves_bak\" || exit
-					caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-					if [ \"\$caves_saves_bak\" -gt 21 ];then
-						find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
-					fi
-					zip -r \"\${DST_now}\".zip $master_saves_path/save/
+					
 				fi
 				((timecheck++))
 				CheckProcess
