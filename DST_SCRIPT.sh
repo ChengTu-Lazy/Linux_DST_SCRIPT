@@ -27,7 +27,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.1"
+DST_SCRIPT_version="1.4.11"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
