@@ -691,25 +691,32 @@ function addmod()
 function get_process_name()
 {
 	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "正式版64位" ]]; then
-		export  process_name_AutoUpdate="DST $cluster_name AutoUpdate"
+		process_name_AutoUpdate="DST $cluster_name AutoUpdate"
+		process_name_caves="无"
+		process_name_master="无"
+		process_name="无"
 		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
-			export process_name_caves="DST_Caves $cluster_name"
-			export process_name="DST_Caves $cluster_name"
+			process_name_caves="DST_Caves $cluster_name"
+			process_name="DST_Caves $cluster_name"
 		fi
 		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-			export process_name_master="DST_Master $cluster_name"
-			export process_name="DST_Master $cluster_name"
+			process_name_master="DST_Master $cluster_name"
+			process_name="DST_Master $cluster_name"
 		fi
 		
 	elif [[ $DST_game_version == "测试版32位" || $DST_game_version == "测试版64位" ]]; then
-		export process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
+		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
+		process_name_caves="无"
+		process_name_master="无"
+		process_name="无"
+		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
 		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
-			export process_name_caves="DST_Caves_beta $cluster_name"
-			export process_name="DST_Caves_beta $cluster_name"
+			process_name_caves="DST_Caves_beta $cluster_name"
+			process_name="DST_Caves_beta $cluster_name"
 		fi	
 		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-			export process_name_master="DST_Master_beta $cluster_name"
-			export process_name="DST_Master_beta $cluster_name"
+			process_name_master="DST_Master_beta $cluster_name"
+			process_name="DST_Master_beta $cluster_name"
 		fi
 	fi
 }
