@@ -27,7 +27,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.11"
+DST_SCRIPT_version="1.4.12"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -393,7 +393,6 @@ function auto_update()
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
 	##配置常量
-	DST_now=\$(date +%Y年%m月%d日%H:%M)
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	flag=$flag
 	# 游戏版本
@@ -618,6 +617,7 @@ function auto_update()
 	# 保持运行
 	while :
 			do
+				DST_now=\$(date +%Y年%m月%d日%H:%M)
 				a=\$((( timecheck%17280 )))
 				# 自动备份
 				if [ \"\$a\" == 0 ] || [ \"\$timecheck\" == 1 ];then
