@@ -15,6 +15,7 @@
 # 2022/07/18 新增记录开服时间功能，对关服理由进行了区分，更改脚本日志输出方式
 # 2022/07/22 新增控制台功能（回档，发送通知，复活全体玩家，查看服务器玩家情况），新增64位版本游戏服务器开启选项
 # 2022/07/23 新增备份功能，每次开启存档备份一次，每隔17280s(1/5天)自动备份一次档，位置在../Master/saves_bak和../Caves/saves_bak,超过二十个存档就会检测三天前的存档，如果有就会删除三天前的存档
+# 2022/07/29 每隔17280s(1/5天)自动备份一次档这是忽略了执行检查的时间，实际上是每隔17280次循环自动备份一次档，24天备份一下，现在改成了150次循环备份一下，即每5h备份一次
 
 
 : "
@@ -27,7 +28,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.12"
+DST_SCRIPT_version="1.4.13"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -618,9 +619,11 @@ function auto_update()
 	while :
 			do
 				DST_now=\$(date +%Y年%m月%d日%H:%M)
-				a=\$((( timecheck%17280 )))
+				# 150次循环后进行一次存档备份,经测试,正常情况下一轮检查要一到两分钟,偶尔延迟卡一下会有四到五分钟的延迟
+				# 平均下来差不多每两分钟一次循环,即每5h备份一次
+				timecheck=\$(( timecheck%150 ))
 				# 自动备份
-				if [ \"\$a\" == 0 ] || [ \"\$timecheck\" == 1 ];then
+				if [ \"\$timecheck\" == 0 ];then
 					if [  -d \"$master_saves_path\" ];then
 						cd \"$master_saves_path\" || exit
 						if [ ! -d \"$master_saves_path/saves_bak\" ];then
