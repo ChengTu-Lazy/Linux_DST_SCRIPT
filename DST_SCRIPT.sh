@@ -415,13 +415,21 @@ function auto_update()
 				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
+			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
+			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
 				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				c_announce=\"检测到游戏连接不上klei服务器,服务器需要重启,给您带来的不便还请谅解！！！\"
+				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
