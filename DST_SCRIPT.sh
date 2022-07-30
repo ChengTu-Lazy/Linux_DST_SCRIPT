@@ -407,14 +407,38 @@ function auto_update()
 				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
+			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
+			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
 		elif [ \"\$flag\" == 4 ]; then
 			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
 				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
+			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"检测到游戏连接不上klei服务器,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
+			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
 		elif [ \"\$flag\" == 2 ]; then
 			if [[ \$(screen -ls | grep -c \"$process_name_master\") -ne 1 ]]; then
 				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
+			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
+				restart_server
+			fi
+			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 				restart_server
 			fi
 		fi
@@ -473,8 +497,14 @@ function auto_update()
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
-			c_announce=\"检测到游戏Mod有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
-			restart_server
+			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_reset() \$(printf \\\\r)\"
 		elif [  \${DST_has_mods_update} == false ]; then
 			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
 		fi
