@@ -28,7 +28,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.14"
+DST_SCRIPT_version="1.4.15"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -401,53 +401,36 @@ function auto_update()
 	#查看进程执行情况
 	function CheckProcess()
 	{
-		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ]; then
-			if [[ \$(screen -ls | grep -c \"$process_name_master\") -ne 1 || \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
-				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-		elif [ \"\$flag\" == 4 ]; then
-			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
-				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
-			fi
-		elif [ \"\$flag\" == 2 ]; then
+		if [  -d \"$master_saves_path\" ];then
 			if [[ \$(screen -ls | grep -c \"$process_name_master\") -ne 1 ]]; then
-				c_announce=\"检测到游戏存档未完整开启,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
+				shutdown_master
+				start_server_master
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
+				c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
+				shutdown_master
+				start_server_master
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				c_announce=\"Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-				restart_server
+				c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
+				shutdown_master
+				start_server_master
+			fi
+		fi
+		if [ -d \"$caves_saves_path\" ];then
+			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
+				shutdown_caves
+				start_server_caves
+			fi
+			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
+				shutdown_caves
+				start_server_caves
+			fi
+			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
+				shutdown_caves
+				start_server_caves
 			fi
 		fi
 	}
@@ -481,7 +464,6 @@ function auto_update()
 	#查看游戏mod更新情况
 	function CheckModUpdate()
 	{
-		
 		echo \"\"\"\${DST_now}\"\": 同步服务端更新进程正在运行。。。\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
 		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt 
@@ -506,10 +488,6 @@ function auto_update()
 		if [  \${DST_has_mods_update} == true ]; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
 			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
 			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
 			sleep 2
 			screen -S \"\$i\" -p 0 -X stuff \"c_reset() \$(printf \\\\r)\"
@@ -541,43 +519,65 @@ function auto_update()
 	# 关闭服务器
 	function Shutdown()
 	{
-		if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 || \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 || \$(screen -ls | grep -c \"$process_name_AutoUpdate\") -gt 0 ]]; then
-			if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0  ]]; then
-				for i in \$(screen -ls | grep -w \"$process_name_master\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-				do
-					screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-					sleep 2
-					screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-					sleep 2
-					screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-					sleep 2
-					screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
-					sleep 1
-				done
-			else
-				echo \"$cluster_name 这个存档没有开启地上服务器！！！！！！\"
-			fi
-
-			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0  ]]; then
-				for i in \$(screen -ls | grep -w \"$process_name_caves\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-				do
-					screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
-					sleep 1
-				done
-			else
-				echo \"$cluster_name 这个存档没有开启地下服务器！！！！！！\"
-			fi
-			while :
-			do
-				sleep 1
-				if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 || \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
-					echo -e \"服务器 $cluster_name 正在关闭,请稍后。。。\"
-				else
-					echo -e \"服务器 $cluster_name 已关闭!!!\"
-					break
-				fi
-			done
+		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+		if [ \"\$flag\" == 1 ]; then
+			shutdown_master
+			shutdown_caves
+		elif [ \"\$flag\" == 2 ]; then
+			shutdown_master
+		elif [ \"\$flag\" == 4 ]; then
+			shutdown_caves
 		fi
+	}
+	# 关闭地上服务器
+	function shutdown_master()
+	{
+		for i in \$(screen -ls | grep -w \"$process_name_master\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
+		do
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
+			sleep 1
+		done
+		while :
+		do
+			sleep 1
+			if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 ]]; then
+				echo -e \"$cluster_name地上服务器正在关闭,请稍后。。。\"
+			else
+				echo -e \"$cluster_name地上服务器已关闭!!!\"
+				break
+			fi
+		done
+	}
+	# 关闭地下服务器
+	function shutdown_caves()
+	{
+		for i in \$(screen -ls | grep -w \"$process_name_caves\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
+		do
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
+			sleep 2
+			screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
+			sleep 1
+		done
+		while :
+		do
+			sleep 1
+			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
+				echo -e \"$cluster_name地上服务器正在关闭,请稍后。。。\"
+			else
+				echo -e \"$cluster_name地上服务器已关闭!!!\"
+				break
+			fi
+		done
 	}
 	# 开启服务器
 	function start_server()
@@ -585,9 +585,19 @@ function auto_update()
 		Addmod
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 		if [ \$flag == 1 ];then
-			screen -dmS  \"$process_name_master\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\" 
-			screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-			if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
+			start_server_master
+			start_server_caves
+		elif [ \$flag == 2 ];then
+			start_server_master
+		elif [ \$flag == 4 ];then
+			start_server_caves
+		fi
+	}
+	# 开启地上服务器
+	function start_server_master()
+	{
+		screen -dmS  \"$process_name_master\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\" 
+		if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
 			while :
 			do
 				sleep 2
@@ -597,44 +607,22 @@ function auto_update()
 				break
 				fi
 			done
-			fi
-			if [ \"\$(screen -ls | grep -c \"$process_name_caves\")\" -gt 0 ];then
-				while :
-				do
-					sleep 1
-					echo \"地下服务器开启中,请稍后。。。\"
-					if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-						echo \"地下服务器开启成功!!!\"
-						break
-					fi
-				done
-			fi
-		elif [ \$flag == 2 ];then
-			screen -dmS  \"$process_name_master\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\" 
-			if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
-				while :
-				do
-					sleep 2
-					echo \"地上服务器开启中,请稍后。。。\"
-					if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
-						echo \"地上服务器开启成功!!!\"
-						break
-					fi
-				done
-			fi
-		elif [ \$flag == 4 ];then
-			screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-			if [ \"\$(screen -ls | grep -c \"$process_name_caves\")\" -gt 0 ];then
-				while :
-				do
-					sleep 1
-					echo \"地下服务器开启中,请稍后。。。\"
-					if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-						echo \"地下服务器开启成功!!!\"
-						break
-					fi
-				done
-			fi
+		fi
+	}
+	# 开启地下服务器
+	function start_server_caves()
+	{
+		screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
+		if [ \"\$(screen -ls | grep -c \"$process_name_caves\")\" -gt 0 ];then
+			while :
+			do
+				sleep 1
+				echo \"地下服务器开启中,请稍后。。。\"
+				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+					echo \"地下服务器开启成功!!!\"
+					break
+				fi
+			done
 		fi
 	}
 	#自动添加存档所需的mod
@@ -652,13 +640,12 @@ function auto_update()
 			echo \"\$line Mod添加完成\"
 		done
 	}
+	
 	timecheck=0
 	# 保持运行
 	while :
 			do
 				DST_now=\$(date +%Y年%m月%d日%H:%M)
-				# 150次循环后进行一次存档备份,经测试,正常情况下一轮检查要一到两分钟,偶尔延迟卡一下会有四到五分钟的延迟
-				# 平均下来差不多每两分钟一次循环,即每5h备份一次
 				timecheck=\$(( timecheck%750 ))
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
