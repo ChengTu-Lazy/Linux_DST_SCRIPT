@@ -487,44 +487,11 @@ function auto_update()
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
-			reset_server
+			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
+			restart_server
 		elif [  \${DST_has_mods_update} == false ]; then
 			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
 		fi
-	}
-	# reset服务器
-	function reset_server()
-	{
-		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ]; then
-			reset_master
-		elif [ \"\$flag\" == 2 ]; then
-			reset_master
-		elif [ \"\$flag\" == 4 ]; then
-			reset_caves
-		fi
-	}
-	# reset地上服务器
-	function reset_master()
-	{
-		for i in \$(screen -ls | grep -w \"$process_name_master\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-		do
-			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_reset() \$(printf \\\\r)\"
-		done
-	}
-	# reset地下服务器
-	function reset_caves()
-	{
-		for i in \$(screen -ls | grep -w \"$process_name_caves\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-		do
-			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_reset() \$(printf \\\\r)\"
-		done
 	}
 	# 重启服务器
 	function restart_server()
