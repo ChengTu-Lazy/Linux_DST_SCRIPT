@@ -77,10 +77,10 @@ function Main()
 		(case $main1 in
 			1)PreLibrary;;
 			2)get_cluster_name;start_server;;
-			3)get_cluster_name_processing;close_server;;
+			3)close_server;;
 			4)check_server;;
 			5)console;;
-			6)get_cluster_name_processing;restart_server;;
+			6)restart_server;;
 			7)change_game_version;;
 			8)list_all_mod;;
 			9)get_mew_version;;
@@ -157,6 +157,7 @@ function Filechose()
 # 关闭服务器
 function close_server()
 {
+	get_cluster_name_processing
 	if [ "$cluster_name" == "" ]; then
 			Main
 	else
@@ -248,7 +249,7 @@ function close_server_()
 # 重启服务器
 function restart_server()
 {
-	close_server_
+	close_server
 	Filechose
 }
 
