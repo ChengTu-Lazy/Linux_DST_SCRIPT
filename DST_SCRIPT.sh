@@ -30,7 +30,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.20"
+DST_SCRIPT_version="1.4.21"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -444,6 +444,7 @@ function auto_update()
 				start_server_master
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				getplayerlist
 				if [ \"\$have_player_master\" ];then
 					c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
@@ -451,6 +452,7 @@ function auto_update()
 				fi
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
+				getplayerlist
 				if [ \"\$have_player_master\" ];then
 					c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
@@ -464,6 +466,7 @@ function auto_update()
 				start_server_caves
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				getplayerlist
 				if [ \"\$have_player_caves\" ];then
 					c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
@@ -471,6 +474,7 @@ function auto_update()
 				fi
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
+				getplayerlist
 				if [ \"\$have_player_caves\" ];then
 					c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
