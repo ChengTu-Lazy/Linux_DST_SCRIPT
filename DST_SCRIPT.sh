@@ -30,7 +30,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.22"
+DST_SCRIPT_version="1.4.23"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -445,7 +445,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ \"!\$have_player_master\" ];then
+				if [ ! \"\$have_player_master\" ];then
 					c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
 					start_server_master
@@ -453,7 +453,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ \"!\$have_player_master\" ];then
+				if [ ! \"\$have_player_master\" ];then
 					c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
 					start_server_master
@@ -467,7 +467,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ \"!\$have_player_caves\" ];then
+				if [ ! \"\$have_player_caves\" ];then
 					c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
 					start_server_caves
@@ -475,7 +475,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ \"!\$have_player_caves\" ];then
+				if [ ! \"\$have_player_caves\" ];then
 					c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
 					start_server_caves
@@ -671,11 +671,29 @@ function auto_update()
 		if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
 			while :
 			do
-				sleep 2
-				echo \"地上服务器开启中,请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
-				echo \"地上服务器开启成功!!!\"
-				break
+				sleep 1
+				echo -en \"\\r地上服务器开启中,请稍后.  \"
+				sleep 1
+				echo -en \"\\r地上服务器开启中,请稍后.. \"
+				sleep 1
+				echo -en \"\\r地上服务器开启中,请稍后...\"
+				if [[ \$(grep \"Sim paused" -c "$masterlog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
+						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
+						break
+				fi
+				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$masterlog_path\") -gt 0  ]]; then
+					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
+					Shutdown
+					break
+				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$masterlog_path\") -gt 0  ]]; then
+					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
+					Shutdown
+					break
+				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$masterlog_path\") -gt 0 ]]; then
+					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
+					sleep 3
+					Shutdown
+					start_server
 				fi
 			done
 		fi
@@ -688,14 +706,33 @@ function auto_update()
 			while :
 			do
 				sleep 1
-				echo \"地下服务器开启中,请稍后。。。\"
-				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 || \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-					echo \"地下服务器开启成功!!!\"
+				echo -en \"\\r地下服务器开启中,请稍后.  \"
+				sleep 1
+				echo -en \"\\r地下服务器开启中,请稍后.. \"
+				sleep 1
+				echo -en \"\\r地下服务器开启中,请稍后...\"
+				if [[ \$(grep \"Sim paused" -c "$caveslog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
+						break
+				fi
+				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$caveslog_path\") -gt 0  ]]; then
+					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
+					Shutdown
 					break
+				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$caveslog_path\") -gt 0  ]]; then
+					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
+					Shutdown
+					break
+				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$caveslog_path\") -gt 0 ]]; then
+					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
+					sleep 3
+					Shutdown
+					start_server
 				fi
 			done
 		fi
 	}
+
 	#自动添加存档所需的mod
 	function Addmod()
 	{
