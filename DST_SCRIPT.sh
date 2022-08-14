@@ -30,7 +30,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.23"
+DST_SCRIPT_version="1.4.24"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -88,6 +88,12 @@ function Main()
     done
 }
 
+# 重启服务器
+function restart_server()
+{
+	close_server
+	howtostart
+}
 
 # 开启服务器
 function start_server()
@@ -118,16 +124,16 @@ function start_server()
 					fi
 				done
 			fi
-			Filechose
+			howtostart
 		fi
 	else
 		echo "未找到这个存档"
 	fi
 }
 
-# 选择开启的存档
-function Filechose()
-{ 
+#确认存档情况
+function get_cluster_flag()
+{
 	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
 		flag=4
 	else
@@ -138,6 +144,12 @@ function Filechose()
 	else
 		flag=$((flag - 2))
 	fi
+}
+
+# 选择开启方式
+function howtostart()
+{ 
+	get_cluster_flag
     (case $flag in
 	# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 		1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;Main;
@@ -151,22 +163,39 @@ function Filechose()
 		5)echo "存档没有内容,请自行创建！！！";Main;
 		;;
 	esac)
-
 }
 
 # 关闭服务器
 function close_server()
 {
 	get_cluster_name_processing
-	if [ "$cluster_name" == "" ]; then
-			Main
-	else
-		echo ""
-		get_process_name
-		close_server_
+	get_process_name
+	get_cluster_flag
+	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+	if [ "$flag" == 1 ]; then
+		close_server_autoUpdate
+		close_server_master
+		close_server_caves
+	elif [ "$flag" == 2 ]; then
+		close_server_autoUpdate
+		close_server_master
+	elif [ "$flag" == 4 ]; then
+		close_server_autoUpdate
+		close_server_caves
 	fi
+	while :
+	do
+		sleep 1
+		if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+			echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
+		else
+			echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
+			break
+		fi
+	done
 }
-# 选择存档
+
+# 存档进程名
 function get_cluster_name_processing()
 {
 	printf  '=%.0s' {1..12}
@@ -181,76 +210,57 @@ function get_cluster_name_processing()
 	read -r cluster_name
 }
 
-# 关闭服务器解耦部分
-function close_server_()
+# 关闭服务器地上部分
+function close_server_master()
 {
-	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 || $(screen -ls | grep -c "$process_name_AutoUpdate") -gt 0 || $(screen -ls | grep -c "$process_name_AutoUpdate") -gt 0 ]]; then
-		if [[ $(screen -ls | grep -c "$process_name_AutoUpdate") -gt 0  ]]; then
-			for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				kill "$i"
-			done
-		fi
-		if [[ $(screen -ls | grep -c "$process_name_master") -gt 0  ]]; then
-			for i in $(screen -ls | grep -w "$process_name_master" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地上服务器正在发布公告.  "
-				sleep 1.5
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地上服务器正在发布公告.. "
-				sleep 1.5
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地上服务器正在发布公告..."
-				sleep 1.5
-				screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-				echo -e "\n\e[92m地上服务器公告发布完毕!!!                \e[0m"
-				sleep 1
-			done
-		fi
-		if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0  ]]; then
-			for i in $(screen -ls | grep -w "$process_name_caves" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-			do
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地下服务器正在发布公告.  "
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地下服务器正在发布公告.. "
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-				echo -en "\r地下服务器正在发布公告..."
-				sleep 2
-				screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-				echo -e "\n\e[92m地下服务器公告发布完毕!!!                \e[0m"
-				sleep 1
-			done
-		fi
-			while :
-			do
-				sleep 1
-				if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-					echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
-				else
-				 	echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
-					break
-				fi
-			done
-		else
-			printf  '=%.0s' {1..80}
-			echo ""
-			echo ""
-			echo "当前游戏服务器未开启！！！"
-			echo ""
-			printf  '=%.0s' {1..80}
-			echo ""
-		fi
+	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0  ]]; then
+		for i in $(screen -ls | grep -w "$process_name_master" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
+		do
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地上服务器正在发布公告.  "
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地上服务器正在发布公告.. "
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地上服务器正在发布公告..."
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
+			echo -e "\n\e[92m地上服务器公告发布完毕!!!                \e[0m"
+		done
+	fi
 }
 
-# 重启服务器
-function restart_server()
+# 关闭服务器地下部分
+function close_server_caves()
 {
-	close_server
-	Filechose
+	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0  ]]; then
+		for i in $(screen -ls | grep -w "$process_name_caves" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
+		do
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地下服务器正在发布公告.  "
+			sleep 2
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地下服务器正在发布公告.. "
+			sleep 2
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r地下服务器正在发布公告..."
+			sleep 2
+			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
+			echo -e "\n\e[92m地下服务器公告发布完毕!!!                \e[0m"
+		done
+	fi
+}
+
+# 关闭服务器自动管理部分
+function close_server_autoUpdate()
+{
+	if [[ $(screen -ls | grep -c "$process_name_AutoUpdate") -gt 0  ]]; then
+		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
+		do
+			kill "$i"
+		done
+	fi
 }
 
 #检查是否成功开启
@@ -273,18 +283,18 @@ function start_serverCheck()
 					break
 			fi
 			if  [[ $(grep "Your Server Will Not Start !!!" -c "$masterlog_path") -gt 0  ]]; then
-				echo "服务器开启未成功,请注意令牌是否成功设置且有效。"
-				close_server_
+				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
+				close_server_master
 				break
 			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$masterlog_path") -gt 0  ]]; then
 				echo "地上服务器开启未成功,端口冲突啦，改下端口吧！"
-				close_server_
+				close_server_master
 				break
 			elif [[ $(grep "Failed to send shard broadcast message" -c "$masterlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
 				sleep 3
-				close_server_
-				start_server
+				close_server_master
+				StartMaster
 			fi
 		done
 	fi
@@ -302,18 +312,18 @@ function start_serverCheck()
 					break
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,请注意令牌是否成功设置且有效。"
-				close_server_
+				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
+				close_server_caves
 				break
 			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$caveslog_path") -gt 0  ]]; then
 				echo "服务器开启未成功,端口冲突啦，改下端口吧！"
-				close_server_
+				close_server_caves
 				break
 			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
 				sleep 3
-				close_server_
-				start_server
+				close_server_caves
+				StartCaves
 			fi
 		done
 	fi
@@ -373,7 +383,7 @@ function console()
     done
 }
 
-# 选择日志文件
+# 日志文件路径
 function get_server_log_path()
 {
 	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
@@ -385,7 +395,6 @@ function get_server_log_path()
 		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	fi
 }
-
 
 # 获取最新版脚本
 function get_mew_version()
@@ -683,17 +692,17 @@ function auto_update()
 				fi
 				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$masterlog_path\") -gt 0  ]]; then
 					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
-					Shutdown
+					shutdown_master
 					break
 				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$masterlog_path\") -gt 0  ]]; then
 					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
-					Shutdown
+					shutdown_master
 					break
 				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$masterlog_path\") -gt 0 ]]; then
 					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
 					sleep 3
-					Shutdown
-					start_server
+					shutdown_master
+					start_server_master
 				fi
 			done
 		fi
@@ -717,17 +726,17 @@ function auto_update()
 				fi
 				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$caveslog_path\") -gt 0  ]]; then
 					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
-					Shutdown
+					shutdown_caves
 					break
 				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$caveslog_path\") -gt 0  ]]; then
 					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
-					Shutdown
+					shutdown_caves
 					break
 				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$caveslog_path\") -gt 0 ]]; then
 					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
 					sleep 3
-					Shutdown
-					start_server
+					shutdown_caves
+					start_server_caves
 				fi
 			done
 		fi
@@ -795,7 +804,7 @@ function auto_update()
 	echo -e "\e[92m自动更新进程 $process_name_AutoUpdate 已启动\e[0m"
 }
 
-# 选择mod配置文件的路径
+# mod配置文件的路径
 function get_modoverrides_path()
 {
 	dedicated_server_mods_setup_path="${DST_game_path}"/mods/dedicated_server_mods_setup.lua
@@ -825,7 +834,7 @@ function addmod()
 	done
 }
 
-# 选择存档进程
+# 存档进程
 function get_process_name()
 {
 	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "正式版64位" ]]; then
@@ -859,7 +868,7 @@ function get_process_name()
 	fi
 }
 
-# 选择存档
+# 存档
 function get_cluster_name()
 {
 	if [ ! -d "${DST_save_path}" ]
@@ -885,8 +894,7 @@ function get_cluster_name()
 	read -r cluster_name
 }
 
-
-# 选择游戏版本
+# 游戏版本
 function get_dontstarve_dedicated_server_nullrenderer()
 {
 	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "测试版32位" ]]; then
