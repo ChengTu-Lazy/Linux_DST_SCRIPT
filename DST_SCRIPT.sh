@@ -677,7 +677,7 @@ function auto_update()
 				echo -en \"\\r地上服务器开启中,请稍后.. \"
 				sleep 1
 				echo -en \"\\r地上服务器开启中,请稍后...\"
-				if [[ \$(grep \"Sim paused" -c "$masterlog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
+				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
 						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
 						break
 				fi
@@ -711,7 +711,7 @@ function auto_update()
 				echo -en \"\\r地下服务器开启中,请稍后.. \"
 				sleep 1
 				echo -en \"\\r地下服务器开启中,请稍后...\"
-				if [[ \$(grep \"Sim paused" -c "$caveslog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
+				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
 						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
 						break
 				fi
