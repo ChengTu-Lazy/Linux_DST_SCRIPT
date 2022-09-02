@@ -18,7 +18,7 @@
 # 2022/07/29 每隔17280s(1/5天)自动备份一次档这是忽略了执行检查的时间，实际上是每隔17280次循环自动备份一次档，24天备份一下，现在改成了150次循环备份一下，即每5h备份一次
 # 2022/07/29 经过一天的测试，150次循环平均时间是一个小时，改成750，每5小时一次备份，遇到连不上klei服务器直接重启
 # 2022/08/11 连不上klei服务器时检测服务器里有没有人，如果有人就不重启，不然就直接重启
-
+# 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
 
 : "
 主要功能如下:
@@ -539,10 +539,24 @@ function auto_update()
 		#查看副本文件中的版本号和当前游戏的版本号是否一致
 		if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端有更新!\e[0m\"	
-			c_announce=\"检测到游戏服务端有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
-			UpdateServer
+			CheckUpdateProces
 		else
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端没有更新!\e[0m\"	
+		fi
+	}
+	#查看游戏更新进程情况
+	function CheckUpdateProces()
+	{
+		if [[ \$(screen -ls | grep -c \"AutoUpdate\") -gt 0  ]]; then
+			for i in \$(screen -ls | grep \"AutoUpdate\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
+			do
+				is_UpdateProces=\"\$i\"
+				break
+			done
+		fi
+		if [[ \$(screen -ls | grep \"$process_name_AutoUpdate\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')  -eq \$is_UpdateProces ]]; then
+			c_announce=\"检测到游戏服务端有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
+			UpdateServer
 		fi
 	}
 	#查看游戏mod更新情况
