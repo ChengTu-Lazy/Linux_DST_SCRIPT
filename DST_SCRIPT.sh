@@ -30,7 +30,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.25"
+DST_SCRIPT_version="1.4.26"
 # git加速链接
 use_acceleration_url="hub.fastgit.xyz/"
 # 饥荒存档位置
@@ -541,6 +541,11 @@ function auto_update()
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端有更新!\e[0m\"	
 			CheckUpdateProces
 		else
+			if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
+				echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端已更新,正在进行更新!\e[0m\"	
+				restart_server
+				UpdateServer_flag=0
+			fi
 			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端没有更新!\e[0m\"	
 		fi
 	}
@@ -557,6 +562,9 @@ function auto_update()
 		if [[ \$(screen -ls | grep \"$process_name_AutoUpdate\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')  -eq \$is_UpdateProces ]]; then
 			c_announce=\"检测到游戏服务端有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
 			UpdateServer
+		else 
+			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端需要更新,正在等待更新!\e[0m\"	
+			UpdateServer_flag=1
 		fi
 	}
 	#查看游戏mod更新情况
