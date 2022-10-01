@@ -19,6 +19,7 @@
 # 2022/07/29 经过一天的测试，150次循环平均时间是一个小时，改成750，每5小时一次备份，遇到连不上klei服务器直接重启
 # 2022/08/11 连不上klei服务器时检测服务器里有没有人，如果有人就不重启，不然就直接重启
 # 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
+# 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
 
 : "
 主要功能如下:
@@ -30,7 +31,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.4.27"
+DST_SCRIPT_version="1.5.0"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -521,33 +522,54 @@ function auto_update()
 	#查看游戏更新情况
 	function CheckUpdate()
 	{
-		#先更新服务器副本文件
-		cd $HOME/steamcmd || exit
-		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-			echo \"正在同步测试版游戏服务端。\"	
-			./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
-			rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-			chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
-			cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-		else
-			echo \"正在同步正式版游戏服务端。\"	
-			./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST\"  +login anonymous +app_update 343050 validate +quit 
-			rm \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
-			chmod 777 \"$HOME/DST_Updatecheck/branch_DST/version.txt\"
-			cp \"$HOME/DST_Updatecheck/branch_DST/version.txt\" \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
-		fi
+		# #先更新服务器副本文件
+		# cd $HOME/steamcmd || exit
+		# if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
+		# 	echo \"正在同步测试版游戏服务端。\"	
+		# 	./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
+		# 	rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
+		# 	chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
+		# 	cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
+		# else
+		# 	echo \"正在同步正式版游戏服务端。\"	
+		# 	./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST\"  +login anonymous +app_update 343050 validate +quit 
+		# 	rm \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
+		# 	chmod 777 \"$HOME/DST_Updatecheck/branch_DST/version.txt\"
+		# 	cp \"$HOME/DST_Updatecheck/branch_DST/version.txt\" \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
+			
+		# fi
+		# #查看副本文件中的版本号和当前游戏的版本号是否一致
+		# if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
+		# 	echo -e \"\e[92m\${DST_now}: 游戏服务端有更新!\e[0m\"	
+		# 	CheckUpdateProces
+		# else
+		# 	if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
+		# 		echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新!\e[0m\"	
+		# 		restart_server
+		# 		UpdateServer_flag=0
+		# 	fi
+		# 	echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
+		# fi
+
 		#查看副本文件中的版本号和当前游戏的版本号是否一致
-		if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
-			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端有更新!\e[0m\"	
+		if [[ \$(grep  \": Version:\"  \"\$HOME/dst/bin/$cluster_name.txt\" | cut -d ':' -f5 | sed 's/[^0-9\]//g') -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
+			echo " "
+			echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
+			echo " "
 			CheckUpdateProces
 		else
 			if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
-				echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端已更新,正在进行更新!\e[0m\"	
+				echo " "
+				echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新! \e[0m\"	
+				echo " "
 				restart_server
 				UpdateServer_flag=0
 			fi
-			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端没有更新!\e[0m\"	
+			echo " "
+			echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新! \e[0m\"	
+			echo " "
 		fi
+
 	}
 	#查看游戏更新进程情况
 	function CheckUpdateProces()
@@ -563,14 +585,17 @@ function auto_update()
 			c_announce=\"检测到游戏服务端有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
 			UpdateServer
 		else 
-			echo -e \"\e[93m\"\"\${DST_now}\"\": 游戏服务端需要更新,正在等待更新!\e[0m\"	
+			echo " "
+			echo -e \"\e[31m \${DST_now}: 游戏服务端需要更新,正在等待更新! \e[0m\"	
+			echo " "
 			UpdateServer_flag=1
 		fi
 	}
 	#查看游戏mod更新情况
 	function CheckModUpdate()
 	{
-		echo \"\"\"\${DST_now}\"\": 同步服务端更新进程正在运行。。。\"
+		echo " "
+		echo -e \"\e[92m\${DST_now}: 同步服务端更新进程正在运行。。。\e[0m\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
 		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt 
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
@@ -592,11 +617,15 @@ function auto_update()
 			DST_has_mods_update=false
 		fi
 		if [  \${DST_has_mods_update} == true ]; then
-			echo -e \"\e[93m\"\"\${DST_now}\"\": Mod 有更新！\e[0m\"
+			echo " "
+			echo -e \"\e[31m \${DST_now}: Mod 有更新！ \e[0m\"
+			echo " "
 			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
 			restart_server
 		elif [  \${DST_has_mods_update} == false ]; then
-			echo -e \"\e[92m\${DST_now}: Mod 没有更新!\e[0m\"
+			echo " "
+			echo -e \"\e[92m \${DST_now}: Mod 没有更新! \e[0m\"
+			echo " "
 		fi
 	}
 	# 重启服务器
@@ -819,7 +848,7 @@ function auto_update()
 				CheckProcess
 				CheckUpdate
 				CheckModUpdate
-				sleep 1
+				sleep 30
 			done
 	" > "${Cluster_bath}"/auto_update.sh
 	chmod 777 "${Cluster_bath}"/auto_update.sh
@@ -1240,10 +1269,7 @@ function PreLibrary()
 	echo ""
 	sudo apt-get -y update
 	sudo apt-get -y wget
-	sudo apt-get -y install screen
-	sudo apt-get -y install htop
-	sudo apt-get -y install gawk
-	sudo apt-get -y install zip unzip
+
 	# 加载 32bit 库
 	sudo apt-get -y install lib32gcc1
 	sudo apt-get -y install lib32stdc++6
@@ -1253,6 +1279,12 @@ function PreLibrary()
 	sudo apt-get -y install lib64gcc1
 	sudo apt-get -y install lib64stdc++6
 	sudo apt-get -y install libcurl4-gnutls-dev
+
+	#一些必备工具
+	sudo apt-get -y install screen
+	sudo apt-get -y install htop
+	sudo apt-get -y install gawk
+	sudo apt-get -y install zip unzip
 
 	if [ -f "/usr/lib/libcurl.so.4" ];then
 		ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
@@ -1271,15 +1303,19 @@ function PreLibrary()
 		echo ""
 		sudo yum -y update
 		sudo yum -y wget
+
+		# 加载 32bit 库
+		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
+		# 加载 64bit 库
+		sudo yum -y install glibc libstdc++ libcurl
+
+		# 一些必备工具
 		sudo yum -y install tar wget screen
 		sudo yum -y install screen
 		sudo yum -y install htop
 		sudo yum -y install gawk
 		sudo yum -y install zip unzip
-		# 加载 32bit 库
-		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
-		# 加载 64bit 库
-		sudo yum -y install glibc libstdc++ libcurl
+
 		if [ -f "/usr/lib/libcurl.so.4" ];then
 			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
 		fi
