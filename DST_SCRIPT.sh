@@ -31,7 +31,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.5.0"
+DST_SCRIPT_version="1.5.1"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -430,6 +430,7 @@ function get_mew_version()
 function auto_update()
 {
 	get_modoverrides_path
+	get_server_log_path
 	Cluster_bath="${DST_save_path}"/"$cluster_name"
 	ugc_mods_path="${DST_game_path}/ugc_mods"
 	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
