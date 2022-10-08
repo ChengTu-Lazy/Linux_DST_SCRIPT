@@ -20,6 +20,7 @@
 # 2022/08/11 连不上klei服务器时检测服务器里有没有人，如果有人就不重启，不然就直接重启
 # 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
 # 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
+# 2022/10/08 UI改变,重启策略更改
 
 : "
 主要功能如下:
@@ -31,7 +32,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.5.1"
+DST_SCRIPT_version="1.5.2"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -53,25 +54,21 @@ c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
 function Main()
 {
 
+
 	tput setaf 2 
-		echo "================================================================================================="
-	echo -e "                                          \c"
-	printf "%-36s\n"  "服务器版本为${DST_game_version}"
-	echo -e "                                             \c"
-	tput setaf 3 
-	printf "%-40s\n" "脚本版本为${DST_SCRIPT_version}"
-	tput setaf 2 
-    	echo "================================================================================================="
+	echo "=============================================================="
+	printf "%s\n" "|                  服务器版本为${DST_game_version}                    |"
+	printf "%s\n" "|                     脚本版本为${DST_SCRIPT_version}                        |"
+	echo "|============================================================|"
 	while :
 	do
-		echo "                                                                                  "
-		echo "	[1]重新安装依赖                 [2]启动服务器           [3]关闭饥荒服务器			"
-		echo "                                                                                  "
-		echo "	[4]查看服务器状态               [5]控制台               [6]重启服务器"
-		echo "                                                                                  "
-		echo "	[7]更换服务器版本               [8]查看存档mod          [9]获取最新脚本			   "
-		echo "                                                                                  "
-		echo "================================================================================================="
+		echo "|                                          	             |"
+		echo "|  [1]重新安装依赖       [2]启动服务器     [3]关闭饥荒服务器 |"
+		echo "|                                          	             |"
+		echo "|  [4]查看服务器状态     [5]控制台         [6]重启服务器     |"
+		echo "|                                          	             |"
+		echo "|  [7]更换服务器版本     [8]查看存档mod    [9]获取最新脚本   |"
+		echo "=============================================================="
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
@@ -457,7 +454,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ ! \"\$have_player_master\" ];then
+				if [ \"\$have_player_master\" == false ];then
 					c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
 					start_server_master
@@ -465,7 +462,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ ! \"\$have_player_master\" ];then
+				if [ \"\$have_player_master\" == false ];then
 					c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
 					start_server_master
@@ -479,7 +476,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ ! \"\$have_player_caves\" ];then
+				if [ \"\$have_player_caves\" == false ];then
 					c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
 					start_server_caves
@@ -487,7 +484,7 @@ function auto_update()
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				getplayerlist
-				if [ ! \"\$have_player_caves\" ];then
+				if [ \"\$have_player_caves\" == false ];then
 					c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
 					start_server_caves
@@ -503,7 +500,7 @@ function auto_update()
 			screen -r \"$process_name_master\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end\$(printf \\\\r)\"
 			sleep 5
 			list=\$( grep \"$server_log_path_master\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 | tail -n +2)
-			if [[ ! \"\$list\" = \"\" ]]; then
+			if [[ \"\$list\" != \"\" ]]; then
 				have_player_master=true
 			else
 				have_player_master=false
@@ -513,7 +510,7 @@ function auto_update()
 			screen -r \"$process_name_caves\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end\$(printf \\\\r)\"
 			sleep 5
 			list=\$( grep \"$server_log_path_caves\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 | tail -n +2)
-			if [[ ! \"\$list\" = \"\" ]]; then
+			if [[ \"\$list\" != \"\" ]]; then
 				have_player_caves=true
 			else
 				have_player_caves=false
@@ -1029,7 +1026,7 @@ function getplayerlist()
 		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end$(printf \\r)"
 		sleep 5
 		list=$( grep "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
-		if [[ ! "$list" = "" ]]; then
+		if [[ "$list" != "" ]]; then
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
@@ -1046,7 +1043,7 @@ function getplayerlist()
 		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab)) end$(printf \\r)"
 		sleep 5
 		list=$( grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
-		if [[ ! "$list" = "" ]]; then
+		if [[ "$list" != "" ]]; then
 		    echo -e "\e[92m服务器玩家列表:\e[0m"
 	        echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
