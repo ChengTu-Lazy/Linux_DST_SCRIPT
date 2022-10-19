@@ -32,7 +32,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.5.2"
+DST_SCRIPT_version="1.5.3"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -838,7 +838,7 @@ function auto_update()
 						if [ \"\$caves_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						zip -r \"\${DST_now}\".zip $master_saves_path/save/
+						zip -r \"\${DST_now}\".zip $caves_saves_path/save/
 					fi
 					
 				fi
