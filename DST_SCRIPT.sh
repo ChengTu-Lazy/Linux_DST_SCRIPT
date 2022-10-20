@@ -168,30 +168,36 @@ function howtostart()
 function close_server()
 {
 	get_cluster_name_processing
-	get_process_name
 	get_cluster_flag
-	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-	if [ "$flag" == 1 ]; then
-		close_server_autoUpdate
-		close_server_master
-		close_server_caves
-	elif [ "$flag" == 2 ]; then
-		close_server_autoUpdate
-		close_server_master
-	elif [ "$flag" == 4 ]; then
-		close_server_autoUpdate
-		close_server_caves
-	fi
-	while :
-	do
-		sleep 1
-		if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-			echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
-		else
-			echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
-			break
+	get_process_name
+	if [ "$cluster_name" == "" ]; then
+			Main
+	elif [ -d "${DST_save_path}/$cluster_name" ];then
+		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+		if [ "$flag" == 1 ]; then
+			close_server_autoUpdate
+			close_server_master
+			close_server_caves
+		elif [ "$flag" == 2 ]; then
+			close_server_autoUpdate
+			close_server_master
+		elif [ "$flag" == 4 ]; then
+			close_server_autoUpdate
+			close_server_caves
 		fi
-	done
+		while :
+		do
+			sleep 1
+			if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+				echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
+			else
+				echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
+				break
+			fi
+		done
+	else
+		echo "未找到这个存档"
+	fi
 }
 
 # 存档进程名
