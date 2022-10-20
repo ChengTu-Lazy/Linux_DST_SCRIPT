@@ -812,7 +812,7 @@ function auto_update()
 	# 保持运行
 	while :
 			do
-				DST_now=\$(date +%Y-%m-%d-%H:%M)
+				DST_now=\$(date +%Y年%m月%d日%H:%M)
 				timecheck=\$(( timecheck%750 ))
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
@@ -826,7 +826,7 @@ function auto_update()
 						if [ \"\$master_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						zip -r \"\${DST_now}\".zip $master_saves_path/save/
+						zip -r \"bak_\${DST_now}\".zip $master_saves_path/save/
 					fi
 					if [ -d \"$caves_saves_path\" ];then
 						cd \"$caves_saves_path\" || exit			
@@ -838,7 +838,7 @@ function auto_update()
 						if [ \"\$caves_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						zip -r \"\${DST_now}\".zip $caves_saves_path/save/
+						zip -r \"bak_\${DST_now}\".zip $caves_saves_path/save/
 					fi
 					
 				fi
