@@ -812,7 +812,7 @@ function auto_update()
 	# 保持运行
 	while :
 			do
-				DST_now=\$(date +%Y年%m月%d日%H:%M)
+				DST_now=\$(date +%Y-%m-%d-%H:%M)
 				timecheck=\$(( timecheck%750 ))
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
