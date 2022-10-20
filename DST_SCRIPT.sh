@@ -32,7 +32,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.5.4"
+DST_SCRIPT_version="1.5.5"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -63,7 +63,7 @@ function Main()
 	while :
 	do
 		echo "|                                          	             |"
-		echo "|  [1]重新安装依赖       [2]启动服务器     [3]关闭饥荒服务器 |"
+		echo "|  [1]重新载入脚本       [2]启动服务器     [3]关闭饥荒服务器 |"
 		echo "|                                          	             |"
 		echo "|  [4]查看服务器状态     [5]控制台         [6]重启服务器     |"
 		echo "|                                          	             |"
@@ -73,7 +73,8 @@ function Main()
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
 		(case $main1 in
-			1)PreLibrary;;
+			1)PreLibrary;prepare;
+			;;
 			2)get_cluster_name;start_server;;
 			3)close_server;;
 			4)check_server;;
@@ -595,7 +596,7 @@ function auto_update()
 		echo " "
 		echo -e \"\e[92m\${DST_now}: 同步服务端更新进程正在运行。。。\e[0m\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
-		./dontstarve_dedicated_server_nullrenderer -only_update_server_mods -ugc_directory \"$cluster_name\" > $cluster_name.txt 
+		./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\" -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
 			# NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
@@ -1338,15 +1339,13 @@ function PreLibrary()
 function prepare()
 {
 	cd "$HOME" || exit
-	if [ ! -d "./steamcmd" ] ||[ ! -d "./DST_Updatecheck"  ] || [ ! -d "./DST_Updatecheck/branch_DST"  ] || [ ! -d "./DST_Updatecheck/branch_DST_Beta"  ] || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
+	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ]  || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
 		PreLibrary
 		mkdir "$HOME/dst"
 		mkdir "$HOME/dst_beta"
-		mkdir "$HOME/DST_Updatecheck"
-		mkdir "$HOME/DST_Updatecheck/branch_DST"
-		mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
+		mkdir "$HOME/.klei/DoNotStarveTogether"
 		mkdir "${DST_save_path}"
 		cd "$HOME/steamcmd" || exit 
 		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
