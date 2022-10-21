@@ -1358,7 +1358,7 @@ function PreLibrary()
 function prepare()
 {
 	cd "$HOME" || exit
-	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ] ||[ ! -d "./DST_Updatecheck"  ]  || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
+	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ] || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
 		PreLibrary
 		mkdir "$HOME/dst"
 		mkdir "$HOME/dst_beta"
