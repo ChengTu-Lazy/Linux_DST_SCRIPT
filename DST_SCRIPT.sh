@@ -21,6 +21,7 @@
 # 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
 # 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
 # 2022/10/08 UI改变,重启策略更改
+# 2022/10/21 更改检查服务器版本有更新的方式
 
 : "
 主要功能如下:
@@ -32,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.5.5"
+DST_SCRIPT_version="1.6.0"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -73,7 +74,7 @@ function Main()
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
 		(case $main1 in
-			1)PreLibrary;prepare;
+			1)PreLibrary;update_game;prepare;
 			;;
 			2)get_cluster_name;start_server;;
 			3)close_server;;
@@ -213,6 +214,13 @@ function get_cluster_name_processing()
 	printf  '=%.0s' {1..28}
 	echo ""
 	read -r cluster_name
+	if [ "$cluster_name" == "" ]; then
+			echo "存档名输入有误！"
+			Main
+	elif [ ! -d "${DST_save_path}/$cluster_name" ]; then 
+			echo "存档不存在！"
+			Main
+	fi
 }
 
 # 关闭服务器地上部分
@@ -527,54 +535,47 @@ function auto_update()
 	#查看游戏更新情况
 	function CheckUpdate()
 	{
-		# #先更新服务器副本文件
-		# cd $HOME/steamcmd || exit
-		# if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-		# 	echo \"正在同步测试版游戏服务端。\"	
-		# 	./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
-		# 	rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-		# 	chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
-		# 	cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-		# else
-		# 	echo \"正在同步正式版游戏服务端。\"	
-		# 	./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST\"  +login anonymous +app_update 343050 validate +quit 
-		# 	rm \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
-		# 	chmod 777 \"$HOME/DST_Updatecheck/branch_DST/version.txt\"
-		# 	cp \"$HOME/DST_Updatecheck/branch_DST/version.txt\" \"$HOME/DST_Updatecheck/branch_DST/version_copy.txt\"
-			
-		# fi
-		# #查看副本文件中的版本号和当前游戏的版本号是否一致
-		# if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
-		# 	echo -e \"\e[92m\${DST_now}: 游戏服务端有更新!\e[0m\"	
-		# 	CheckUpdateProces
-		# else
-		# 	if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
-		# 		echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新!\e[0m\"	
-		# 		restart_server
-		# 		UpdateServer_flag=0
-		# 	fi
-		# 	echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
-		# fi
-
-		#查看副本文件中的版本号和当前游戏的版本号是否一致
-		if [[ \$(grep  \": Version:\"  \"\$HOME/dst/bin/$cluster_name.txt\" | cut -d ':' -f5 | sed 's/[^0-9\]//g') -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
-			echo " "
-			echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
-			echo " "
-			CheckUpdateProces
-		else
-			if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
-				echo " "
-				echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新! \e[0m\"	
-				echo " "
-				restart_server
-				UpdateServer_flag=0
+		#先更新服务器副本文件
+		cd $HOME/steamcmd || exit
+		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
+			echo \"正在同步测试版游戏服务端。\"	
+			./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
+			rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
+			chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
+			cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
+			if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
+				echo -e \"\e[92m\${DST_now}: 游戏服务端有更新!\e[0m\"	
+				CheckUpdateProces
+			else
+				if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
+					echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新!\e[0m\"	
+					restart_server
+					UpdateServer_flag=0
+				fi
+				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
 			fi
-			echo " "
-			echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新! \e[0m\"	
-			echo " "
+		else
+			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst/get_version_info.txt\"
+			grep  \"fa fa-thumb-tack\"  \"$HOME/dst/get_version_info.txt\"   --before-context=15 | grep  \"</h3>\"    --before-context=3 | cut -d '<' -f1  | sed -e 's/^\s*//' -e '/^$/d' > \"$HOME/dst/version_now.txt\"
+			#查看副本文件中的版本号和当前游戏的版本号是否一致
+			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
+				echo " "
+				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
+				echo " "
+				CheckUpdateProces
+			else
+				if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
+					echo " "
+					echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新! \e[0m\"	
+					echo " "
+					restart_server
+					UpdateServer_flag=0
+				fi
+				echo " "
+				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新! \e[0m\"	
+				echo " "
+			fi
 		fi
-
 	}
 	#查看游戏更新进程情况
 	function CheckUpdateProces()
@@ -1345,10 +1346,14 @@ function PreLibrary()
 function prepare()
 {
 	cd "$HOME" || exit
-	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ]  || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
+	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ] ||[ ! -d "./DST_Updatecheck"  ]  || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
 		PreLibrary
 		mkdir "$HOME/dst"
 		mkdir "$HOME/dst_beta"
+		mkdir "$HOME/dst_beta"
+		mkdir "$HOME/DST_Updatecheck"
+		mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
+		
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
@@ -1391,7 +1396,6 @@ function change_game_version()
 		if [ "$game_version" == "1" ]; then
 		 	echo "更改服务端版本为正式版32位!"	
 			DST_game_version="正式版32位"
-			DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
 			DST_game_path="$HOME/dst"
 			cd "$HOME/dst" || exit
 			if [ ! -e "version.txt" ]; then
@@ -1401,7 +1405,6 @@ function change_game_version()
 		elif [ "$game_version" == "2" ]; then
 			echo "更改服务端版本为正式版64位!"	
 			DST_game_version="正式版64位"
-			DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
 			DST_game_path="$HOME/dst"
 			cd "$HOME/dst" || exit
 			if [ ! -e "version.txt" ]; then
