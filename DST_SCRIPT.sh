@@ -603,14 +603,15 @@ function auto_update()
 		echo " "
 		echo -e \"\e[92m\${DST_now}: 同步服务端更新进程正在运行。。。\e[0m\"
 		cd $dontstarve_dedicated_server_nullrenderer_path || exit
-		./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\" -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
 			# NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
+			./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\"  -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
 			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterlog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
 			fi
 		elif [ \"\$flag\" == 4 ]; then
+			./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\" -shard Caves -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
 			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${caveslog_path}\") -gt  0 ]]; then
 				DST_has_mods_update=true
 			fi
