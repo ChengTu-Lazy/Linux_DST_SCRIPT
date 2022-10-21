@@ -65,7 +65,7 @@ function Main()
 		echo "                                          	             "
 		echo "  [4]查看服务器状态     [5]控制台         [6]重启服务器     "
 		echo "                                          	             "
-		echo "  [7]更换服务器版本     [8]查看存档mod    [9]获取最新脚本   "
+		echo "  [7]更改存档开启方式   [8]查看存档mod    [9]获取最新脚本   "
 		echo "============================================================"
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
@@ -542,10 +542,12 @@ function auto_update()
 			# rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
 			# chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
 			# cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst/get_betaversion_info.txt\"
-			grep Test \"$HOME/dst/get_betaversion_info.txt\" --before-context=2 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst/betaversion_now.txt\"
-			if flock \"${DST_temp_path}/version_copy.txt\" -c \"! diff -q ${DST_temp_path}/version_copy.txt ${DST_game_path}/version.txt > /dev/null\" ; then
-				echo -e \"\e[92m\${DST_now}: 游戏服务端有更新!\e[0m\"	
+			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst_beta/get_betaversion_info.txt\"
+			grep Test \"$HOME/dst_beta/get_betaversion_info.txt\" --before-context=2 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst_beta/betaversion_now.txt\"
+			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/betaversion_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/version.txt\") ]]; then
+				echo " "
+				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
+				echo " "
 				CheckUpdateProces
 			else
 				if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
