@@ -21,7 +21,7 @@
 # 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
 # 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
 # 2022/10/08 UI改变,重启策略更改
-# 2022/10/21 更改检查服务器版本有更新的方式
+# 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
 
 : "
 主要功能如下:
@@ -33,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.1"
+DST_SCRIPT_version="1.6.2"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -54,22 +54,19 @@ c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
 #主菜单
 function Main()
 {
-
-
 	tput setaf 2 
-	echo "=============================================================="
-	printf "%s\n" "|                  服务器版本为${DST_game_version}                    |"
-	printf "%s\n" "|                     脚本版本为${DST_SCRIPT_version}                        |"
-	echo "|============================================================|"
+	echo "============================================================"
+	printf "%s\n" "                    脚本版本:${DST_SCRIPT_version}  "
+	echo "============================================================"
 	while :
 	do
-		echo "|                                          	             |"
-		echo "|  [1]重新载入脚本       [2]启动服务器     [3]关闭饥荒服务器 |"
-		echo "|                                          	             |"
-		echo "|  [4]查看服务器状态     [5]控制台         [6]重启服务器     |"
-		echo "|                                          	             |"
-		echo "|  [7]更换服务器版本     [8]查看存档mod    [9]获取最新脚本   |"
-		echo "=============================================================="
+		echo "                                          	             "
+		echo "  [1]重新载入脚本       [2]启动服务器     [3]关闭饥荒服务器 "
+		echo "                                          	             "
+		echo "  [4]查看服务器状态     [5]控制台         [6]重启服务器     "
+		echo "                                          	             "
+		echo "  [7]更换服务器版本     [8]查看存档mod    [9]获取最新脚本   "
+		echo "============================================================"
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
@@ -268,11 +265,13 @@ function close_server_caves()
 # 关闭服务器自动管理部分
 function close_server_autoUpdate()
 {
-	if [[ $(screen -ls | grep -c "$process_name_AutoUpdate") -gt 0  ]]; then
+	if [ "$(screen -ls | grep -c "$process_name_AutoUpdate")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
 		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
 		do
 			kill "$i"
 		done
+	else
+		echo "未找到$process_name_AutoUpdate!"
 	fi
 }
 
@@ -958,11 +957,20 @@ function get_cluster_name()
 # 游戏版本
 function get_dontstarve_dedicated_server_nullrenderer()
 {
-	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "测试版32位" ]]; then
-		gamesPath=\"$DST_game_path/bin\"
+	if [ ! -f "$DST_save_path/$cluster_name/gameversion.txt" ]; then
+		echo "正式版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+	fi
+	if [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "正式版32位" ]]; then
+		gamesPath="$HOME/dst/bin"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	elif [[ $DST_game_version == "正式版64位" || $DST_game_version == "测试版64位" ]]; then
-		gamesPath=\"$DST_game_path/bin64\"
+	elif [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "正式版64位" ]]; then
+		gamesPath="$HOME/dst/bin64"
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
+	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "测试版32位" ]]; then
+		gamesPath="$HOME/dst_beta/bin"
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
+	elif [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "测试版64位" ]]; then
+		gamesPath="$HOME/dst_beta/bin64"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
 	fi
 }
@@ -984,7 +992,6 @@ function StartCaves()
 	chmod u+x ./startcaves.sh
 	cd "$HOME" || exit
 	screen -dmS  "$process_name_caves" /bin/sh -c "${DST_save_path}/$cluster_name/startcaves.sh" 
-	
 }
 
 #开启地面服务器
@@ -1353,9 +1360,6 @@ function prepare()
 		PreLibrary
 		mkdir "$HOME/dst"
 		mkdir "$HOME/dst_beta"
-		mkdir "$HOME/dst_beta"
-		mkdir "$HOME/DST_Updatecheck"
-		mkdir "$HOME/DST_Updatecheck/branch_DST_Beta"
 		
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
@@ -1387,6 +1391,7 @@ function prepare()
 # 切换游戏版本
 function change_game_version()
 {
+
 	echo "###########################"
 	echo "##### 请选择游戏版本: #####"
 	echo "#      1.正式版32位       #"
@@ -1395,46 +1400,42 @@ function change_game_version()
 	echo "#      4.测试版64位       #"
 	echo "###########################"
 	read -r game_version
-	if [[ $game_version == "1" || $game_version == "2" || $game_version == "3" || $game_version == "4" ]]; then
-		if [ "$game_version" == "1" ]; then
-		 	echo "更改服务端版本为正式版32位!"	
-			DST_game_version="正式版32位"
-			DST_game_path="$HOME/dst"
-			cd "$HOME/dst" || exit
-			if [ ! -e "version.txt" ]; then
-				cd "$HOME/steamcmd" || exit
-				./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
-			fi
-		elif [ "$game_version" == "2" ]; then
-			echo "更改服务端版本为正式版64位!"	
-			DST_game_version="正式版64位"
-			DST_game_path="$HOME/dst"
-			cd "$HOME/dst" || exit
-			if [ ! -e "version.txt" ]; then
-				cd "$HOME/steamcmd" || exit
-				./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
-			fi
-		elif [ "$game_version" == "3" ]; then
-			echo "更改服务端版本为测试版32位!"	
-			DST_game_version="测试版32位"
-			DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
-			DST_game_path="$HOME/dst_beta"
-			cd "$HOME/dst_beta" || exit
-			if [ ! -e "version.txt" ]; then
-				cd "$HOME/steamcmd" || exit
-				./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
-			fi
-		elif [ "$game_version" == "4" ]; then
-			echo "更改服务端版本为测试版64位!"	
-			DST_game_version="测试版64位"
-			DST_temp_path="$HOME/DST_Updatecheck/branch_DST_Beta"
-			DST_game_path="$HOME/dst_beta"
-			cd "$HOME/dst_beta" || exit
-			if [ ! -e "version.txt" ]; then
-				cd "$HOME/steamcmd" || exit
-				./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
-			fi
+	get_cluster_name
+	if [ "$game_version" == "1" ]; then
+		echo "更改服务端版本为正式版32位!"	
+		echo "正式版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		cd "$HOME/dst" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
 		fi
+	elif [ "$game_version" == "2" ]; then
+		echo "更改服务端版本为正式版64位!"	
+		echo "正式版64位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		cd "$HOME/dst" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+		fi
+	elif [ "$game_version" == "3" ]; then
+		echo "更改服务端版本为测试版32位!"	
+		echo "测试版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		cd "$HOME/dst_beta" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+		fi
+	elif [ "$game_version" == "4" ]; then
+		echo "更改服务端版本为测试版64位!"	
+		echo "测试版64位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		cd "$HOME/dst_beta" || exit
+		if [ ! -e "version.txt" ]; then
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+		fi
+	else
+		echo "输入有误,请重新输入"
+		change_game_version
 	fi
     Main
 }
