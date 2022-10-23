@@ -33,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.3"
+DST_SCRIPT_version="1.6.4"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -448,6 +448,7 @@ function auto_update()
 	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 	master_saves_path="${DST_save_path}/$cluster_name/Master"
 	caves_saves_path="${DST_save_path}/$cluster_name/Caves"
+	DST_game_version=$(cat "$DST_save_path/$cluster_name/gameversion.txt")
 	cd "$HOME" || exit
 	cd "${Cluster_bath}" || exit
 	# 配置auto_update.sh
@@ -456,7 +457,7 @@ function auto_update()
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	flag=$flag
 	# 游戏版本
-	DST_game_version=\"${DST_game_version}\"
+	DST_game_version=\"$DST_game_version\"
 	#查看进程执行情况
 	function CheckProcess()
 	{
@@ -650,7 +651,7 @@ function auto_update()
 		cd $HOME/steamcmd || exit
 		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
 			echo \"正在同步测试版游戏服务端。\"
-			./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
+			 ./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
 		else
 			echo \"正在同步正式版游戏服务端。\"
 			./steamcmd.sh +force_install_dir \"$HOME/dst\" +login anonymous +app_update 343050 validate +quit 
@@ -1384,7 +1385,7 @@ function prepare()
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ] ; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
 		fi
 	fi
 	cd "$HOME" || exit 
@@ -1426,7 +1427,7 @@ function change_game_version()
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
 		fi
 	elif [ "$game_version" == "4" ]; then
 		echo "更改服务端版本为测试版64位!"	
@@ -1434,7 +1435,7 @@ function change_game_version()
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
 		fi
 	else
 		echo "输入有误,请重新输入"
@@ -1453,7 +1454,7 @@ function update_game()
 	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
 	else
         echo "当前服务端版本为${DST_game_version}"
-	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 -beta anewreignbeta validate +quit
+	     ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
     fi
 }
 
