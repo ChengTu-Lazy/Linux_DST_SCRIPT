@@ -33,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.2"
+DST_SCRIPT_version="1.6.3"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -42,8 +42,6 @@ DST_save_path="$HOME/.klei/DoNotStarveTogether"
 DST_game_version="正式版32位"
 # 当前游戏位置
 DST_game_path="$HOME/dst"
-# 当前游戏的分支位置
-DST_temp_path="$HOME/DST_Updatecheck/branch_DST"
 # 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
 # 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
@@ -56,7 +54,7 @@ function Main()
 {
 	tput setaf 2 
 	echo "============================================================"
-	printf "%s\n" "                    脚本版本:${DST_SCRIPT_version}  "
+	printf "%s\n" "                     脚本版本:${DST_SCRIPT_version}                            "
 	echo "============================================================"
 	while :
 	do
@@ -66,6 +64,7 @@ function Main()
 		echo "  [4]查看服务器状态     [5]控制台         [6]重启服务器     "
 		echo "                                          	             "
 		echo "  [7]更改存档开启方式   [8]查看存档mod    [9]获取最新脚本   "
+		echo "                                          	             "
 		echo "============================================================"
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
@@ -945,12 +944,13 @@ function get_cluster_name()
 	echo ""
 	echo ""
 	cd "${DST_save_path}" || exit
-	ls -I "Cluster_1" 
+	ls
 	cd "$HOME"|| exit
 	echo ""
-	printf  '=%.0s' {1..12}
-	echo -e "存档名不要是Cluster_1,否则会找不到哦\c"
-	printf  '=%.0s' {1..12}
+	printf  '=%.0s' {1..60}
+	# printf  '=%.0s' {1..12}
+	# echo -e "存档名不要是Cluster_1,否则会找不到哦\c"
+	# printf  '=%.0s' {1..12}
 	echo ""
 	echo "请输入存档代码:"
 	read -r cluster_name
@@ -1290,6 +1290,7 @@ function PreLibrary()
 
 	# 加载 32bit 库
 	sudo apt-get -y install lib32gcc1
+	sudo apt-get -y install libc6-i386
 	sudo apt-get -y install lib32stdc++6
 	sudo apt-get -y install libcurl4-gnutls-dev:i386
 	sudo dpkg --add-architecture i386
