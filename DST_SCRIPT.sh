@@ -33,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.4"
+DST_SCRIPT_version="1.6.5"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 饥荒存档位置
@@ -182,16 +182,18 @@ function close_server()
 			close_server_autoUpdate
 			close_server_caves
 		fi
-		while :
-		do
-			sleep 1
-			if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-				echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
-			else
-				echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
-				break
-			fi
-		done
+		if [ -d "${DST_save_path}/$cluster_name" ];then
+			while :
+			do
+				sleep 1
+				if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+					echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
+				else
+					echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
+					break
+				fi
+			done
+		fi
 	else
 		echo "未找到这个存档"
 	fi
