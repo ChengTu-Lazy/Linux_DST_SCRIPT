@@ -33,9 +33,11 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.5"
+DST_SCRIPT_version="1.6.6"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
+#测试版token
+beta_token="updatebeta"
 # 饥荒存档位置
 DST_save_path="$HOME/.klei/DoNotStarveTogether"
 # 脚本开启的服务器版本
@@ -50,14 +52,12 @@ flag=1
 c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
 
 #主菜单
-function Main()
-{
-	tput setaf 2 
+function Main() {
+	tput setaf 2
 	echo "============================================================"
 	printf "%s\n" "                     脚本版本:${DST_SCRIPT_version}                            "
 	echo "============================================================"
-	while :
-	do
+	while :; do
 		echo "                                          	             "
 		echo "  [1]重新载入脚本       [2]启动服务器     [3]关闭饥荒服务器 "
 		echo "                                          	             "
@@ -70,52 +70,56 @@ function Main()
 		echo -e "\e[92m请输入命令代号:\e[0m"
 		read -r main1
 		(case $main1 in
-			1)PreLibrary;update_game;prepare;
-			;;
-			2)get_cluster_name;start_server;;
-			3)close_server;;
-			4)check_server;;
-			5)console;;
-			6)restart_server;;
-			7)change_game_version;;
-			8)list_all_mod;;
-			9)get_mew_version;;
-		esac)
-    done
+			1)
+				PreLibrary
+				update_game
+				prepare
+				;;
+			2)
+				get_cluster_name
+				start_server
+				;;
+			3) close_server ;;
+			4) check_server ;;
+			5) console ;;
+			6) restart_server ;;
+			7) change_game_version ;;
+			8) list_all_mod ;;
+			9) get_mew_version ;;
+			esac)
+	done
 }
 
 # 重启服务器
-function restart_server()
-{
+function restart_server() {
 	close_server
 	howtostart
 }
 
 # 开启服务器
-function start_server()
-{
+function start_server() {
 	if [ "$cluster_name" == "" ]; then
-			Main
-	elif [ -d "${DST_save_path}/$cluster_name" ];then
+		Main
+	elif [ -d "${DST_save_path}/$cluster_name" ]; then
 		get_process_name
-		if [ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ] ;then
+		if [ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ]; then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
-		elif [ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ];then
+		elif [ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ]; then
 			echo "该服务器已开启地上服务器,请先关闭再启动！！"
-		else 
+		else
 			# 判断是否有token文件
-			cd "${DST_save_path}/$cluster_name"|| exit
+			cd "${DST_save_path}/$cluster_name" || exit
 			if [ ! -e "cluster_token.txt" ]; then
 				while [ ! -e "cluster_token.txt" ]; do
 					echo "该存档没有token文件,是否自动添加作者的token"
 					echo "请输入 Y/y 同意 或者 N/n 拒绝并自己提供一个"
 					read -r token_yes
-					if [ "$token_yes" == "Y" ] ||  [ "$token_yes" == "y" ]; then
-						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" > "cluster_token.txt"
-					elif [ "$token_yes" == "N" ] ||  [ "$token_yes" == "N" ]; then
+					if [ "$token_yes" == "Y" ] || [ "$token_yes" == "y" ]; then
+						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" >"cluster_token.txt"
+					elif [ "$token_yes" == "N" ] || [ "$token_yes" == "N" ]; then
 						read -r token_no
-						echo "$token_no" > "cluster_token.txt"
-					else 
+						echo "$token_no" >"cluster_token.txt"
+					else
 						echo "输入有误,请重新输入！！！"
 					fi
 				done
@@ -128,14 +132,13 @@ function start_server()
 }
 
 #确认存档情况
-function get_cluster_flag()
-{
+function get_cluster_flag() {
 	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
 		flag=4
 	else
 		flag=7
 	fi
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ] ; then
+	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
 		flag=$((flag - 3))
 	else
 		flag=$((flag - 2))
@@ -143,33 +146,50 @@ function get_cluster_flag()
 }
 
 # 选择开启方式
-function howtostart()
-{ 
+function howtostart() {
 	get_cluster_flag
-    (case $flag in
-	# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-		1)addmod;StartMaster;StartCaves;auto_update;start_serverCheck;Main;
-		;;
-		2)addmod;StartMaster;auto_update;start_serverCheck;Main;
-		;;
-		3)echo "这行纯粹凑字数,没用的" 
-		;;
-		4)addmod;StartCaves;auto_update;start_serverCheck;Main;
-		;;
-		5)echo "存档没有内容,请自行创建！！！";Main;
-		;;
-	esac)
+	(case $flag in
+		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
+		1)
+			addmod
+			StartMaster
+			StartCaves
+			auto_update
+			start_serverCheck
+			Main
+			;;
+		2)
+			addmod
+			StartMaster
+			auto_update
+			start_serverCheck
+			Main
+			;;
+		3)
+			echo "这行纯粹凑字数,没用的"
+			;;
+		4)
+			addmod
+			StartCaves
+			auto_update
+			start_serverCheck
+			Main
+			;;
+		5)
+			echo "存档没有内容,请自行创建！！！"
+			Main
+			;;
+		esac)
 }
 
 # 关闭服务器
-function close_server()
-{
+function close_server() {
 	get_cluster_name_processing
 	get_cluster_flag
 	get_process_name
 	if [ "$cluster_name" == "" ]; then
-			Main
-	elif [ -d "${DST_save_path}/$cluster_name" ];then
+		Main
+	elif [ -d "${DST_save_path}/$cluster_name" ]; then
 		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 		if [ "$flag" == 1 ]; then
 			close_server_autoUpdate
@@ -182,9 +202,8 @@ function close_server()
 			close_server_autoUpdate
 			close_server_caves
 		fi
-		if [ -d "${DST_save_path}/$cluster_name" ];then
-			while :
-			do
+		if [ -d "${DST_save_path}/$cluster_name" ]; then
+			while :; do
 				sleep 1
 				if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
 					echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
@@ -200,33 +219,30 @@ function close_server()
 }
 
 # 存档进程名
-function get_cluster_name_processing()
-{
-	printf  '=%.0s' {1..12}
+function get_cluster_name_processing() {
+	printf '=%.0s' {1..12}
 	echo -e "请确保要关闭的存档版本和当前脚本版本一致(不区分位数)\c"
-	printf  '=%.0s' {1..12}
+	printf '=%.0s' {1..12}
 	echo ""
 	screen -ls
-	printf  '=%.0s' {1..28}
+	printf '=%.0s' {1..28}
 	echo -e "请输入要关闭的存档名\c"
-	printf  '=%.0s' {1..28}
+	printf '=%.0s' {1..28}
 	echo ""
 	read -r cluster_name
 	if [ "$cluster_name" == "" ]; then
-			echo "存档名输入有误！"
-			Main
-	elif [ ! -d "${DST_save_path}/$cluster_name" ]; then 
-			echo "存档不存在！"
-			Main
+		echo "存档名输入有误！"
+		Main
+	elif [ ! -d "${DST_save_path}/$cluster_name" ]; then
+		echo "存档不存在！"
+		Main
 	fi
 }
 
 # 关闭服务器地上部分
-function close_server_master()
-{
-	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0  ]]; then
-		for i in $(screen -ls | grep -w "$process_name_master" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-		do
+function close_server_master() {
+	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
+		for i in $(screen -ls | grep -w "$process_name_master" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
 			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
 			echo -en "\r地上服务器正在发布公告.  "
 			sleep 1.5
@@ -243,11 +259,9 @@ function close_server_master()
 }
 
 # 关闭服务器地下部分
-function close_server_caves()
-{
-	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0  ]]; then
-		for i in $(screen -ls | grep -w "$process_name_caves" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-		do
+function close_server_caves() {
+	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+		for i in $(screen -ls | grep -w "$process_name_caves" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
 			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
 			echo -en "\r地下服务器正在发布公告.  "
 			sleep 2
@@ -264,11 +278,9 @@ function close_server_caves()
 }
 
 # 关闭服务器自动管理部分
-function close_server_autoUpdate()
-{
+function close_server_autoUpdate() {
 	if [ "$(screen -ls | grep -c "$process_name_AutoUpdate")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
-		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}')
-		do
+		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
 			kill "$i"
 		done
 	else
@@ -277,29 +289,27 @@ function close_server_autoUpdate()
 }
 
 #检查是否成功开启
-function start_serverCheck()
-{
+function start_serverCheck() {
 	masterlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-	start_time=$(date +%s);
-	if [[ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ]];then
-		while :
-		do
+	start_time=$(date +%s)
+	if [[ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ]]; then
+		while :; do
 			sleep 1
 			echo -en "\r地上服务器开启中,请稍后.  "
 			sleep 1
 			echo -en "\r地上服务器开启中,请稍后.. "
 			sleep 1
 			echo -en "\r地上服务器开启中,请稍后..."
-			if [[ $(grep "Sim paused" -c "$masterlog_path") -gt 0 ||  $(grep "shard LUA is now ready!" -c "$masterlog_path") -gt 0 ]];then
-					echo -e "\n\e[92m地上服务器开启成功!!!                \e[0m"
-					break
+			if [[ $(grep "Sim paused" -c "$masterlog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$masterlog_path") -gt 0 ]]; then
+				echo -e "\n\e[92m地上服务器开启成功!!!                \e[0m"
+				break
 			fi
-			if  [[ $(grep "Your Server Will Not Start !!!" -c "$masterlog_path") -gt 0  ]]; then
+			if [[ $(grep "Your Server Will Not Start !!!" -c "$masterlog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
 				close_server_master
 				break
-			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$masterlog_path") -gt 0  ]]; then
+			elif [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$masterlog_path") -gt 0 ]]; then
 				echo "地上服务器开启未成功,端口冲突啦，改下端口吧！"
 				close_server_master
 				break
@@ -311,24 +321,23 @@ function start_serverCheck()
 			fi
 		done
 	fi
-	if [[ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ]];then
-		while :
-		do
+	if [[ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ]]; then
+		while :; do
 			sleep 1
 			echo -en "\r地下服务器开启中,请稍后.  "
 			sleep 1
 			echo -en "\r地下服务器开启中,请稍后.. "
 			sleep 1
 			echo -en "\r地下服务器开启中,请稍后..."
-			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$caveslog_path") -gt 0 ]];then
-					echo -e "\n\e[92m地下服务器开启成功!!!                \e[0m"
-					break
+			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$caveslog_path") -gt 0 ]]; then
+				echo -e "\n\e[92m地下服务器开启成功!!!                \e[0m"
+				break
 			fi
 			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
 				close_server_caves
 				break
-			elif  [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$caveslog_path") -gt 0  ]]; then
+			elif [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$caveslog_path") -gt 0 ]]; then
 				echo "服务器开启未成功,端口冲突啦，改下端口吧！"
 				close_server_caves
 				break
@@ -341,31 +350,29 @@ function start_serverCheck()
 		done
 	fi
 	end_time=$(date +%s)
-	cost_time=$((end_time-start_time))
-	echo -e "\r\e[92m本次开服花费时间:$((cost_time/60))分$((cost_time%60))秒\e[0m"
+	cost_time=$((end_time - start_time))
+	echo -e "\r\e[92m本次开服花费时间:$((cost_time / 60))分$((cost_time % 60))秒\e[0m"
 }
 
 # 控制台
-function console()
-{
-	printf  '=%.0s' {1..38}
+function console() {
+	printf '=%.0s' {1..38}
 	echo -e "当前已开启的存档进程\c"
-	printf  '=%.0s' {1..38}
+	printf '=%.0s' {1..38}
 	echo ""
-	screen -ls 
-	printf  '=%.0s' {1..38}
+	screen -ls
+	printf '=%.0s' {1..38}
 	echo -e "请输入要操作的存档名\c"
-	printf  '=%.0s' {1..38}
+	printf '=%.0s' {1..38}
 	echo ""
 	read -r cluster_name
 	clear
-	while :
-	do
-    	echo "==============================请输入需要进行的操作序号=============================="
+	while :; do
+		echo "==============================请输入需要进行的操作序号=============================="
 		echo "                                                                                  "
 		echo "	[1]服务器信息          [2]回档          [3]发布通知			"
 		echo "                                                                                  "
-		echo "	[4]全体复活            [5]查看玩家       [6]返回上一级"      
+		echo "	[4]全体复活            [5]查看玩家       [6]返回上一级"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
@@ -374,33 +381,34 @@ function console()
 		get_process_name
 		get_server_log_path
 		(case $main2 in
-			1)serverinfo;;
-			2)echo "请输入你要回档的天数(1~5):"
-			read -r rollbackday
-			    screen -r "$process_name" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
-		        echo "已回档$rollbackday 天！"
-			;;
-			3)echo "请输入你要发布的公告:"
-			read -r str
+			1) serverinfo ;;
+			2)
+				echo "请输入你要回档的天数(1~5):"
+				read -r rollbackday
+				screen -r "$process_name" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
+				echo "已回档$rollbackday 天！"
+				;;
+			3)
+				echo "请输入你要发布的公告:"
+				read -r str
 				screen -r "$process_name" -p 0 -X stuff "c_announce(\"$str\")$(printf \\r)"
 				echo "已发布通知！"
-			;;
+				;;
 			4)
-			screen -r "$process_name" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
-			echo "已复活全体玩家！"
-			;;
+				screen -r "$process_name" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
+				echo "已复活全体玩家！"
+				;;
 			5)
-			getplayerlist
-			;;
-			6)Main;;
-		esac)
-    done
+				getplayerlist
+				;;
+			6) Main ;;
+			esac)
+	done
 }
 
 # 日志文件路径
-function get_server_log_path()
-{
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
+function get_server_log_path() {
+	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
 		get_server_log_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 		server_log_path_caves="${DST_save_path}/$cluster_name/Caves/server_log.txt"
 	fi
@@ -411,8 +419,7 @@ function get_server_log_path()
 }
 
 # 获取最新版脚本
-function get_mew_version()
-{
+function get_mew_version() {
 	if [ -d "$HOME/clone_tamp" ]; then
 		rm -rf "$HOME/clone_tamp"
 	fi
@@ -439,8 +446,7 @@ function get_mew_version()
 }
 
 # 自动更新
-function auto_update()
-{
+function auto_update() {
 	get_modoverrides_path
 	get_server_log_path
 	Cluster_bath="${DST_save_path}"/"$cluster_name"
@@ -653,7 +659,7 @@ function auto_update()
 		cd $HOME/steamcmd || exit
 		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
 			echo \"正在同步测试版游戏服务端。\"
-			 ./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
+			 ./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta $beta_token validate  +quit
 		else
 			echo \"正在同步正式版游戏服务端。\"
 			./steamcmd.sh +force_install_dir \"$HOME/dst\" +login anonymous +app_update 343050 validate +quit 
@@ -862,26 +868,24 @@ function auto_update()
 				CheckModUpdate
 				sleep 30
 			done
-	" > "${Cluster_bath}"/auto_update.sh
+	" >"${Cluster_bath}"/auto_update.sh
 	chmod 777 "${Cluster_bath}"/auto_update.sh
-	screen -dmS  "$process_name_AutoUpdate" /bin/sh -c "${DST_save_path}/$cluster_name/auto_update.sh"
+	screen -dmS "$process_name_AutoUpdate" /bin/sh -c "${DST_save_path}/$cluster_name/auto_update.sh"
 	echo -e "\e[92m自动更新进程 $process_name_AutoUpdate 已启动\e[0m"
 }
 
 # mod配置文件的路径
-function get_modoverrides_path()
-{
+function get_modoverrides_path() {
 	dedicated_server_mods_setup_path="${DST_game_path}"/mods/dedicated_server_mods_setup.lua
 	if [ -e "${DST_save_path}/$cluster_name/Master/modoverrides.lua" ]; then
 		modoverrides_path=${DST_save_path}/$cluster_name/Master/modoverrides.lua
-	elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then 
+	elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then
 		modoverrides_path=${DST_save_path}/$cluster_name/Caves/modoverrides.lua
 	fi
 }
 
 #自动添加存档所需的mod
-function addmod()
-{
+function addmod() {
 	echo "正在将开启存档所需的mod添加进服务器配置文件中。。。"
 	cd "${DST_game_path}"/mods || exit
 	rm -rf dedicated_server_mods_setup.lua
@@ -889,24 +893,22 @@ function addmod()
 	echo "" >>dedicated_server_mods_setup.lua
 	sleep 0.1
 	get_modoverrides_path
-	grep "\"workshop" < "$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
-	do
-		echo "ServerModSetup(\"$line\")">>"$dedicated_server_mods_setup_path"
-		echo "ServerModCollectionSetup(\"$line\")">>"$dedicated_server_mods_setup_path"
+	grep "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
+		echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup_path"
+		echo "ServerModCollectionSetup(\"$line\")" >>"$dedicated_server_mods_setup_path"
 		sleep 0.05
 		echo -e "\e[92m$line Mod添加完成\e[0m"
 	done
 }
 
 # 存档进程
-function get_process_name()
-{
+function get_process_name() {
 	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "正式版64位" ]]; then
 		process_name_AutoUpdate="DST $cluster_name AutoUpdate"
 		process_name_caves="无"
 		process_name_master="无"
 		process_name="无"
-		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
+		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
 			process_name_caves="DST_Caves $cluster_name"
 			process_name="DST_Caves $cluster_name"
 		fi
@@ -914,17 +916,17 @@ function get_process_name()
 			process_name_master="DST_Master $cluster_name"
 			process_name="DST_Master $cluster_name"
 		fi
-		
+
 	elif [[ $DST_game_version == "测试版32位" || $DST_game_version == "测试版64位" ]]; then
 		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
 		process_name_caves="无"
 		process_name_master="无"
 		process_name="无"
 		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
-		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then 
+		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
 			process_name_caves="DST_Caves_beta $cluster_name"
 			process_name="DST_Caves_beta $cluster_name"
-		fi	
+		fi
 		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
 			process_name_master="DST_Master_beta $cluster_name"
 			process_name="DST_Master_beta $cluster_name"
@@ -933,24 +935,22 @@ function get_process_name()
 }
 
 # 存档
-function get_cluster_name()
-{
-	if [ ! -d "${DST_save_path}" ]
-	then
-	mkdir "$HOME"/.klei
-	cd "$HOME"/.klei || exit
-	mkdir "${DST_save_path}"
+function get_cluster_name() {
+	if [ ! -d "${DST_save_path}" ]; then
+		mkdir "$HOME"/.klei
+		cd "$HOME"/.klei || exit
+		mkdir "${DST_save_path}"
 	fi
-	printf  '=%.0s' {1..26}
+	printf '=%.0s' {1..26}
 	echo -e "存档目录\c"
-	printf  '=%.0s' {1..26}
+	printf '=%.0s' {1..26}
 	echo ""
 	echo ""
 	cd "${DST_save_path}" || exit
 	ls
-	cd "$HOME"|| exit
+	cd "$HOME" || exit
 	echo ""
-	printf  '=%.0s' {1..60}
+	printf '=%.0s' {1..60}
 	# printf  '=%.0s' {1..12}
 	# echo -e "存档名不要是Cluster_1,否则会找不到哦\c"
 	# printf  '=%.0s' {1..12}
@@ -960,68 +960,64 @@ function get_cluster_name()
 }
 
 # 游戏版本
-function get_dontstarve_dedicated_server_nullrenderer()
-{
+function get_dontstarve_dedicated_server_nullrenderer() {
 	if [ ! -f "$DST_save_path/$cluster_name/gameversion.txt" ]; then
-		echo "正式版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		echo "正式版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
 	fi
-	if [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "正式版32位" ]]; then
+	if [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "正式版32位" ]]; then
 		gamesPath="$HOME/dst/bin"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	elif [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "正式版64位" ]]; then
+	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "正式版64位" ]]; then
 		gamesPath="$HOME/dst/bin64"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
 	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "测试版32位" ]]; then
 		gamesPath="$HOME/dst_beta/bin"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	elif [[ $(cat  "$DST_save_path/$cluster_name/gameversion.txt") == "测试版64位" ]]; then
+	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "测试版64位" ]]; then
 		gamesPath="$HOME/dst_beta/bin64"
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
 	fi
 }
 
 #开启地下服务器
-function StartCaves()
-{
+function StartCaves() {
 	get_dontstarve_dedicated_server_nullrenderer
 	rm -rf "${DST_save_path}"/"$cluster_name"/startcaves.sh
-	echo   "#!/bin/bash
+	echo "#!/bin/bash
 	gamesPath=\"$gamesPath\"
 	cd "\"\$gamesPath\" \|\| exit"
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
 	run_shared+=(-monitor_parent_process $)
-	\"\${run_shared[@]}\" -shard Caves" > "${DST_save_path}"/"$cluster_name"/startcaves.sh
+	\"\${run_shared[@]}\" -shard Caves" >"${DST_save_path}"/"$cluster_name"/startcaves.sh
 	cd "${DST_save_path}"/"$cluster_name" || exit
 	chmod u+x ./startcaves.sh
 	cd "$HOME" || exit
-	screen -dmS  "$process_name_caves" /bin/sh -c "${DST_save_path}/$cluster_name/startcaves.sh" 
+	screen -dmS "$process_name_caves" /bin/sh -c "${DST_save_path}/$cluster_name/startcaves.sh"
 }
 
 #开启地面服务器
-function StartMaster()
-{
+function StartMaster() {
 	get_dontstarve_dedicated_server_nullrenderer
 	rm -rf "${DST_save_path}"/"$cluster_name"/startmaster.sh
-	echo   "#!/bin/bash
+	echo "#!/bin/bash
 	gamesPath=\"$gamesPath\"
 	cd "\"\$gamesPath\" \|\| exit"
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
 	run_shared+=(-monitor_parent_process $)
-	\"\${run_shared[@]}\" -shard Master " > "${DST_save_path}"/"$cluster_name"/startmaster.sh
+	\"\${run_shared[@]}\" -shard Master " >"${DST_save_path}"/"$cluster_name"/startmaster.sh
 	cd "${DST_save_path}"/"$cluster_name" || exit
 	chmod u+x ./startmaster.sh
 	cd "$HOME" || exit
-	screen -dmS  "$process_name_master" /bin/sh -c "${DST_save_path}/$cluster_name/startmaster.sh" 
+	screen -dmS "$process_name_master" /bin/sh -c "${DST_save_path}/$cluster_name/startmaster.sh"
 }
 
 # 服务器信息
-function serverinfo()
-{
-	
+function serverinfo() {
+
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
 	getworldstate
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
@@ -1038,53 +1034,51 @@ function serverinfo()
 		echo -e "\e[33m触手怪:($tentacle_caves)个  蜘蛛巢:($spiderden_caves)个  芦苇:($reeds_caves)株\e[0m"
 		echo -e "\e[33m损坏的发条主教:($bishop_nightmare)个  损坏的发条战车:($rook_nightmare)个  损坏的发条骑士:($knight_nightmare)个\e[0m"
 	fi
-    echo -e "\e[33m================================================================================\e[0m"
+	echo -e "\e[33m================================================================================\e[0m"
 }
 
 # 获取玩家列表
-function getplayerlist()
-{	
+function getplayerlist() {
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
-	    allplayerslist=$( date +%s%3N )
+		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end$(printf \\r)"
 		sleep 5
-		list=$( grep "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		list=$(grep "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
 		if [[ "$list" != "" ]]; then
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
 			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list" > "${DST_save_path}"/"$cluster_name"/playerlist.txt
+			echo "$list" >"${DST_save_path}"/"$cluster_name"/playerlist.txt
 		else
 			echo -e "\e[92m服务器玩家列表:\e[0m"
-	        echo -e "\e[92m================================================================================\e[0m"
-			echo    "                                 当前服务器没有玩家"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "                                 当前服务器没有玩家"
 			echo -e "\e[92m================================================================================\e[0m"
 		fi
-	elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0  ]]; then	    
-	    allplayerslist=$( date +%s%3N )
+	elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab)) end$(printf \\r)"
 		sleep 5
-		list=$( grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		list=$(grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
 		if [[ "$list" != "" ]]; then
-		    echo -e "\e[92m服务器玩家列表:\e[0m"
-	        echo -e "\e[92m================================================================================\e[0m"
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+			echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
 			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list" > "${DST_save_path}"/"$cluster_name"/playerlist.txt
+			echo "$list" >"${DST_save_path}"/"$cluster_name"/playerlist.txt
 		else
 			echo -e "\e[92m服务器玩家列表:\e[0m"
-	        echo -e "\e[92m================================================================================\e[0m"
-			echo    "                                 当前服务器没有玩家"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "                                 当前服务器没有玩家"
 			echo -e "\e[92m================================================================================\e[0m"
 		fi
 	fi
 }
 
 # 获取怪物信息
-function getmonster()
-{
-    if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then   									       	
+function getmonster() {
+	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
@@ -1100,20 +1094,20 @@ function getmonster()
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
 		sleep 1
-		walrus_camp_master=$( grep "$server_log_path_master" -e "walrus_camps in the world." | cut -d ':' -f4 | tail -n 1| sed 's/[^0-9\]//g' )
-		reeds_master=$( grep "$server_log_path_master" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		tentacle_master=$( grep "$server_log_path_master" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		tallbirdnest_master=$( grep "$server_log_path_master" -e "tallbirdnests in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		houndmound_master=$( grep "$server_log_path_master" -e "houndmounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		mound_master=$( grep "$server_log_path_master" -e "mounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		gravestone_master=$( grep "$server_log_path_master" -e "gravestones in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_1_master=$( grep "$server_log_path_master" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_2_master=$( grep "$server_log_path_master" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_3_master=$( grep "$server_log_path_master" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_master=$(( spiderden_1_master + spiderden_2_master + spiderden_3_master ))
-		mudi_master=$(( mound_master + gravestone_master ))
+		walrus_camp_master=$(grep "$server_log_path_master" -e "walrus_camps in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		reeds_master=$(grep "$server_log_path_master" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		tentacle_master=$(grep "$server_log_path_master" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		tallbirdnest_master=$(grep "$server_log_path_master" -e "tallbirdnests in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		houndmound_master=$(grep "$server_log_path_master" -e "houndmounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		mound_master=$(grep "$server_log_path_master" -e "mounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		gravestone_master=$(grep "$server_log_path_master" -e "gravestones in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_1_master=$(grep "$server_log_path_master" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_2_master=$(grep "$server_log_path_master" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_3_master=$(grep "$server_log_path_master" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_master=$((spiderden_1_master + spiderden_2_master + spiderden_3_master))
+		mudi_master=$((mound_master + gravestone_master))
 	fi
-	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then   									       	
+	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
@@ -1132,46 +1126,45 @@ function getmonster()
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook_nightmare\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight_nightmare\")$(printf \\r)"
 		sleep 1
-		reeds_caves=$( grep "$server_log_path_caves" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		tentacle_caves=$( grep "$server_log_path_caves" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_1_caves=$( grep "$server_log_path_caves" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_2_caves=$( grep "$server_log_path_caves" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_3_caves=$( grep "$server_log_path_caves" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		bishop_nightmare=$( grep "$server_log_path_caves" -e "bishop_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		rook_nightmare=$( grep "$server_log_path_caves" -e "rook_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		knight_nightmare=$( grep "$server_log_path_caves" -e "knight_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g' )
-		spiderden_caves=$(( spiderden_1_caves + spiderden_2_caves + spiderden_3_caves ))
+		reeds_caves=$(grep "$server_log_path_caves" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		tentacle_caves=$(grep "$server_log_path_caves" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_1_caves=$(grep "$server_log_path_caves" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_2_caves=$(grep "$server_log_path_caves" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_3_caves=$(grep "$server_log_path_caves" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		bishop_nightmare=$(grep "$server_log_path_caves" -e "bishop_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		rook_nightmare=$(grep "$server_log_path_caves" -e "rook_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		knight_nightmare=$(grep "$server_log_path_caves" -e "knight_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_caves=$((spiderden_1_caves + spiderden_2_caves + spiderden_3_caves))
 	fi
 }
 
 # 获取世界状态
-function getworldstate()
-{
-    presentseason=""
+function getworldstate() {
+	presentseason=""
 	presentday=""
 	presentcycles=""
 	presentphase=""
 	presentmoonphase=""
 	presentrain=""
 	presentsnow=""
-	presenttemperature=""								        
-	datatime=$( date +%s%3N )	
-	screen  -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
-	screen  -r "$process_name" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
+	presenttemperature=""
+	datatime=$(date +%s%3N)
+	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
+	screen -r "$process_name" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
 	sleep 1
-	presentseason=$( grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2 )
-	presentday=$( grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f3 | tail -n +2 )
-	presentphase=$( grep "$get_server_log_path" -e "$datatime phase" | cut -d ' ' -f2 | tail -n +2 )
-	presentmoonphase=$( grep "$get_server_log_path" -e "$datatime moonphase" | cut -d ' ' -f2 | tail -n +2 )
-	presenttemperature=$( grep "$get_server_log_path" -e "$datatime temperature" | cut -d ' ' -f2 | tail -n +2 )
-	presentrain=$( grep "$get_server_log_path" -e "$datatime:rain" | cut -d ':' -f6 | tail -n +2 )
-	presentsnow=$( grep "$get_server_log_path" -e "$datatime:snow" | cut -d ':' -f6 | tail -n +2 | cut -d ' ' -f2 )
-	presentcycles=$( grep "$get_server_log_path" -e "$datatime cycles" | cut -d ' ' -f2 | tail -n +2 )
+	presentseason=$(grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2)
+	presentday=$(grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f3 | tail -n +2)
+	presentphase=$(grep "$get_server_log_path" -e "$datatime phase" | cut -d ' ' -f2 | tail -n +2)
+	presentmoonphase=$(grep "$get_server_log_path" -e "$datatime moonphase" | cut -d ' ' -f2 | tail -n +2)
+	presenttemperature=$(grep "$get_server_log_path" -e "$datatime temperature" | cut -d ' ' -f2 | tail -n +2)
+	presentrain=$(grep "$get_server_log_path" -e "$datatime:rain" | cut -d ':' -f6 | tail -n +2)
+	presentsnow=$(grep "$get_server_log_path" -e "$datatime:snow" | cut -d ':' -f6 | tail -n +2 | cut -d ' ' -f2)
+	presentcycles=$(grep "$get_server_log_path" -e "$datatime cycles" | cut -d ' ' -f2 | tail -n +2)
 
 	if [[ "$presentseason" == "autumn" ]]; then
 		presentseason="秋天"
@@ -1204,32 +1197,31 @@ function getworldstate()
 		presentmoonphase="缺月"
 	fi
 	presenttemperature=${presenttemperature%.*}
-	if [[ $( echo "$presentrain" | grep -c "true" ) -gt 0 ]]; then
+	if [[ $(echo "$presentrain" | grep -c "true") -gt 0 ]]; then
 		presentrain="下雨"
 	fi
-	if [[ $( echo "$presentrain" | grep -c "false" ) -gt 0 ]]; then
+	if [[ $(echo "$presentrain" | grep -c "false") -gt 0 ]]; then
 		presentrain="无雨"
 	fi
-	if [[ $( echo "$presentsnow" | grep -c "true" ) -gt 0 ]]; then
+	if [[ $(echo "$presentsnow" | grep -c "true") -gt 0 ]]; then
 		presentsnow="下雪"
 	fi
-	if [[ $( echo "$presentsnow" | grep -c "false" ) -gt 0 ]]; then
+	if [[ $(echo "$presentsnow" | grep -c "false") -gt 0 ]]; then
 		presentsnow="无雪"
 	fi
 }
 
 # 查看游戏服务器状态
-function check_server()
-{
+function check_server() {
 	echo " "
-	printf  '=%.0s' {1..60}
+	printf '=%.0s' {1..60}
 	echo " "
 	echo " "
 	screen -ls
 	echo " "
-	printf  '=%.0s' {1..23}
+	printf '=%.0s' {1..23}
 	echo -e "输入要切换的PID\c"
-	printf  '=%.0s' {1..23}
+	printf '=%.0s' {1..23}
 	echo ""
 	echo ""
 	echo "PS:回车后会进入地上或地下的运行界面"
@@ -1240,83 +1232,81 @@ function check_server()
 }
 
 # 列出所有的mod
-function list_all_mod()
-{
-	tput setaf 2 
-	clear 
+function list_all_mod() {
+	tput setaf 2
+	clear
 	get_cluster_name
 	echo "                                                                                  "
-    echo "                                                                                  "
-	printf  '=%.0s' {1..27}
-    echo -e " $cluster_name存档已下载的mod如下: \c"
-	printf  '=%.0s' {1..27}
+	echo "                                                                                  "
+	printf '=%.0s' {1..27}
+	echo -e " $cluster_name存档已下载的mod如下: \c"
+	printf '=%.0s' {1..27}
 	echo ""
 	if [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Master/content/322330" ]; then
 		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
-		for i in $( find "$temp_mods_path" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
-		do
+		for i in $(find "$temp_mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
 			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
-				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
-				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
+				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
+				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
 			fi
 		done
 		echo ""
-		printf  '=%.0s' {1..80}
+		printf '=%.0s' {1..80}
 	elif [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Caves/content/322330" ]; then
 		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Caves/content/322330
-		for i in $( find "$temp_mods_path" -maxdepth 1   -exec basename {} \; | awk '{print $NF}' )
-		do
+		for i in $(find "$temp_mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
 			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
-				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)	
-				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m" 
+				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
+				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
 			fi
 		done
 		echo ""
-		printf  '=%.0s' {1..80}
-	else	
+		printf '=%.0s' {1..80}
+	else
 		echo "当前存档没有配置或者下载mod"
 	fi
 
 }
 
 # 准备环境
-function PreLibrary()
-{
-	if [ "$os" == "Ubuntu" ];then
-	echo ""
-	echo "##########################"
-	echo "# 加载 Ubuntu Linux 环境 #"
-	echo "##########################"
-	echo ""
-	sudo apt-get -y update
-	sudo apt-get -y wget
+function PreLibrary() {
+	if [ "$os" == "Ubuntu" ]; then
+		echo ""
+		echo "##########################"
+		echo "# 加载 Ubuntu Linux 环境 #"
+		echo "##########################"
+		echo ""
+		sudo apt-get -y update
+		sudo apt-get -y wget
 
-	# 加载 32bit 库
-	sudo apt-get -y install lib32gcc1
-	sudo apt-get -y install libc6-i386
-	sudo apt-get -y install lib32stdc++6
-	sudo apt-get -y install libcurl4-gnutls-dev:i386
-	sudo dpkg --add-architecture i386
-	# 加载 64bit库
-	sudo apt-get -y install lib64gcc1
-	sudo apt-get -y install lib64stdc++6
-	sudo apt-get -y install libcurl4-gnutls-dev
+		# 加载 32bit 库
+		sudo apt-get -y install lib32gcc1
+		sudo apt-get -y install libc6-i386
+		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libcurl4-gnutls-dev:i386
+		sudo dpkg --add-architecture i386
+		# 加载 64bit库
+		sudo apt-get -y install lib64gcc1
+		sudo apt-get -y install lib64stdc++6
+		sudo apt-get -y install libcurl4-gnutls-dev
 
-	#一些必备工具
-	sudo apt-get -y install screen
-	sudo apt-get -y install htop
-	sudo apt-get -y install gawk
-	sudo apt-get -y install zip unzip
+		#一些必备工具
+		sudo apt-get -y install screen
+		sudo apt-get -y install htop
+		sudo apt-get -y install gawk
+		sudo apt-get -y install zip unzip
+		sudo apt-get -y install git
 
-	if [ -f "/usr/lib/libcurl.so.4" ];then
-		ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
-	fi
-	if [ -f "/usr/lib64/libcurl.so.4" ];then
-		ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
-	fi
+		if [ -f "/usr/lib/libcurl.so.4" ]; then
+			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
+		fi
+		if [ -f "/usr/lib64/libcurl.so.4" ]; then
+			ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
+		fi
 
-
-	elif [ "$os" == "CentOS" ];then
+	elif
+		[ "$os" == "CentOS" ]
+	then
 
 		echo ""
 		echo "##########################"
@@ -1337,14 +1327,15 @@ function PreLibrary()
 		sudo yum -y install htop
 		sudo yum -y install gawk
 		sudo yum -y install zip unzip
+		sudo yum -y install git
 
-		if [ -f "/usr/lib/libcurl.so.4" ];then
-			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4	
+		if [ -f "/usr/lib/libcurl.so.4" ]; then
+			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
 		fi
-		if [ -f "/usr/lib64/libcurl.so.4" ];then
+		if [ -f "/usr/lib64/libcurl.so.4" ]; then
 			ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
 		fi
-	elif [ "$os" == "Arch" ];then
+	elif [ "$os" == "Arch" ]; then
 		echo ""
 		echo "########################"
 		echo "# 加载 Arch Linux 环境 #"
@@ -1359,19 +1350,18 @@ function PreLibrary()
 }
 
 #前期准备
-function prepare()
-{
+function prepare() {
 	cd "$HOME" || exit
-	if [ ! -d "./steamcmd" ] ||[ ! -d "./dst"  ] ||[ ! -d "./dst_beta"  ] || [ ! -d "./.klei/DoNotStarveTogether"  ] ;then
+	if [ ! -d "./steamcmd" ] || [ ! -d "./dst" ] || [ ! -d "./dst_beta" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
 		PreLibrary
 		mkdir "$HOME/dst"
 		mkdir "$HOME/dst_beta"
-		
+
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
 		mkdir "${DST_save_path}"
-		cd "$HOME/steamcmd" || exit 
+		cd "$HOME/steamcmd" || exit
 		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
 		tar -xvzf steamcmd_linux.tar.gz
 		sleep 1
@@ -1381,22 +1371,21 @@ function prepare()
 		cd "$HOME/dst" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
 		fi
 	else
 		cd "$HOME/dst_beta" || exit
-		if [ ! -e "version.txt" ] ; then
+		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
+			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
 		fi
 	fi
-	cd "$HOME" || exit 
+	cd "$HOME" || exit
 	Main
 }
 
 # 切换游戏版本
-function change_game_version()
-{
+function change_game_version() {
 
 	echo "###########################"
 	echo "##### 请选择游戏版本: #####"
@@ -1408,56 +1397,55 @@ function change_game_version()
 	read -r game_version
 	get_cluster_name
 	if [ "$game_version" == "1" ]; then
-		echo "更改服务端版本为正式版32位!"	
-		echo "正式版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		echo "更改服务端版本为正式版32位!"
+		echo "正式版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
 		cd "$HOME/dst" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
 		fi
 	elif [ "$game_version" == "2" ]; then
-		echo "更改服务端版本为正式版64位!"	
-		echo "正式版64位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		echo "更改服务端版本为正式版64位!"
+		echo "正式版64位" >"$DST_save_path/$cluster_name/gameversion.txt"
 		cd "$HOME/dst" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
 		fi
 	elif [ "$game_version" == "3" ]; then
-		echo "更改服务端版本为测试版32位!"	
-		echo "测试版32位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		echo "更改服务端版本为测试版32位!"
+		echo "测试版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
+			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
 		fi
 	elif [ "$game_version" == "4" ]; then
-		echo "更改服务端版本为测试版64位!"	
-		echo "测试版64位" > "$DST_save_path/$cluster_name/gameversion.txt"
+		echo "更改服务端版本为测试版64位!"
+		echo "测试版64位" >"$DST_save_path/$cluster_name/gameversion.txt"
 		cd "$HOME/dst_beta" || exit
 		if [ ! -e "version.txt" ]; then
 			cd "$HOME/steamcmd" || exit
-			 ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
+			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
 		fi
 	else
 		echo "输入有误,请重新输入"
 		change_game_version
 	fi
-    Main
+	Main
 }
 
 # 更新游戏
-function update_game()
-{
+function update_game() {
 	cd "$HOME/steamcmd" || exit
-    echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
-    if [[ ${DST_game_version} == "正式版32位" || ${DST_game_version} == "正式版64位" ]]; then
-	    echo "当前服务端版本为${DST_game_version}"
-	    ./steamcmd.sh  +force_install_dir "${DST_game_path}" +login anonymous  +app_update 343050 validate +quit 
+	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
+	if [[ ${DST_game_version} == "正式版32位" || ${DST_game_version} == "正式版64位" ]]; then
+		echo "当前服务端版本为${DST_game_version}"
+		./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
 	else
-        echo "当前服务端版本为${DST_game_version}"
-	     ./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta updatebeta validate  +quit
-    fi
+		echo "当前服务端版本为${DST_game_version}"
+		./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
+	fi
 }
 
 prepare
