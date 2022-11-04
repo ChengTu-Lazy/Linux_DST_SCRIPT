@@ -33,7 +33,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.6"
+DST_SCRIPT_version="1.6.7"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 #测试版token
