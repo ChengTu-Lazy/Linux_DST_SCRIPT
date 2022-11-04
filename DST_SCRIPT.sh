@@ -545,13 +545,8 @@ function auto_update() {
 		# #先更新服务器副本文件
 		# cd $HOME/steamcmd || exit
 		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-			# echo \"正在同步测试版游戏服务端。\"	
-			# ./steamcmd.sh  +force_install_dir \"$HOME/DST_Updatecheck/branch_DST_Beta\" +login anonymous +app_update 343050 -beta anewreignbeta validate +quit
-			# rm \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
-			# chmod 777 \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\"
-			# cp \"$HOME/DST_Updatecheck/branch_DST_Beta/version.txt\" \"$HOME/DST_Updatecheck/branch_DST_Beta/version_copy.txt\"
 			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst_beta/get_betaversion_info.txt\"
-			grep Test \"$HOME/dst_beta/get_betaversion_info.txt\" --before-context=2 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst_beta/betaversion_now.txt\"
+			grep Test \"$HOME/dst_beta/get_betaversion_info.txt\" --before-context=20 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst_beta/betaversion_now.txt\"
 			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/betaversion_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/version.txt\") ]]; then
 				echo " "
 				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
@@ -567,7 +562,7 @@ function auto_update() {
 			fi
 		else
 			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst/get_version_info.txt\"
-			grep Release \"$HOME/dst/get_version_info.txt\" --before-context=2 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst/version_now.txt\"
+			grep Release \"$HOME/dst/get_version_info.txt\" --before-context=20 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst/version_now.txt\"
 			#查看副本文件中的版本号和当前游戏的版本号是否一致
 			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
 				echo " "
