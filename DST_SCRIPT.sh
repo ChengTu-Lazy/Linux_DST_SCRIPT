@@ -544,6 +544,7 @@ function auto_update() {
 	{
 		# #先更新服务器副本文件
 		# cd $HOME/steamcmd || exit
+		
 		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
 			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst_beta/get_betaversion_info.txt\"
 			grep Test \"$HOME/dst_beta/get_betaversion_info.txt\" --before-context=20 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst_beta/betaversion_now.txt\"
@@ -562,18 +563,13 @@ function auto_update() {
 			fi
 		else
 			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"\$HOME/dst/get_version_info.txt\"
-			# 获取Test版本号列表位置
-			list=\$(grep Test -n \"\$HOME/dst/get_version_info.txt\" | cut -d ':' -f1)
-			# 将Test版本号内容替换成\"#\"
-			for i in \$list; do
-				j=\$(( i - 10 ))
-				sed -i \"\$j,\$i\"'c #' \"\$HOME/dst/get_version_info.txt\"
-				for((k=0;k<10;k++)); do
-					sed -i \"\$(( i + k ))\"'a #' \"\$HOME/dst/get_version_info.txt\" 
-				done
-			done
+			# 获取所有版本列表,和test版本列表
+			grep cRelease \"\$HOME/dst/get_version_info.txt\" -A5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' > \"\$HOME/dst/AllVersionList.txt\"
+			grep Test \"\$HOME/dst/get_version_info.txt\" -B5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g'  > \"\$HOME/dst/TestVersionList.txt\"
+			# 取二者差集
+			sort -r  \"\$HOME/dst/AllVersionList.txt\"  \"\$HOME/dst/TestVersionList.txt\" | uniq -u > \"\$HOME/dst/UniqVersionList.txt\"
 			# 获取最新版本号
-			grep cRelease \"\$HOME/dst/get_version_info.txt\" -A5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"\$HOME/dst/version_now.txt\"
+			grep '[2-9][0-9][0-9][0-9][0-9][0-9]' \"\$HOME/dst/UniqVersionList.txt\" | head -n 1   > \"\$HOME/dst/version_now.txt\"
 			#查看副本文件中的版本号和当前游戏的版本号是否一致
 			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
 				echo " "
