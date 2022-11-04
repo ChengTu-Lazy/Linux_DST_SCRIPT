@@ -561,8 +561,19 @@ function auto_update() {
 				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
 			fi
 		else
-			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst/get_version_info.txt\"
-			grep Release \"$HOME/dst/get_version_info.txt\" --before-context=20 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst/version_now.txt\"
+			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"\$HOME/dst/get_version_info.txt\"
+			# 获取Test版本号列表位置
+			list=\$(grep Test -n \"\$HOME/dst/get_version_info.txt\" | cut -d ':' -f1)
+			# 将Test版本号内容替换成\"#\"
+			for i in \$list; do
+				j=\$(( i - 10 ))
+				sed -i \"\$j,\$i\"'c #' \"\$HOME/dst/get_version_info.txt\"
+				for((k=0;k<10;k++)); do
+					sed -i \"\$(( i + k ))\"'a #' \"\$HOME/dst/get_version_info.txt\" 
+				done
+			done
+			# 获取最新版本号
+			grep cRelease \"\$HOME/dst/get_version_info.txt\" -A5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"\$HOME/dst/version_now.txt\"
 			#查看副本文件中的版本号和当前游戏的版本号是否一致
 			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
 				echo " "
