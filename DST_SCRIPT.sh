@@ -22,6 +22,7 @@
 # 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
 # 2022/10/08 UI改变,重启策略更改
 # 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
+# 2022/10/21 更改备份命名格式
 
 : "
 主要功能如下:
@@ -33,7 +34,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.7"
+DST_SCRIPT_version="1.6.8"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 #测试版token
@@ -372,7 +373,9 @@ function console() {
 		echo "                                                                                  "
 		echo "	[1]服务器信息          [2]回档          [3]发布通知			"
 		echo "                                                                                  "
-		echo "	[4]全体复活            [5]查看玩家       [6]返回上一级"
+		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
+		echo "                                                                                  "
+		echo "	[7]利用备份回档-地下    [8]返回上一级"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
@@ -401,7 +404,13 @@ function console() {
 			5)
 				getplayerlist
 				;;
-			6) Main ;;
+			6) 
+				get_server_save_path_master
+				 ;;
+			7) 
+				get_server_save_path_caves
+				 ;;
+			8) Main ;;
 			esac)
 	done
 }
@@ -416,6 +425,58 @@ function get_server_log_path() {
 		get_server_log_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
 		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	fi
+}
+
+# 日志文件路径
+function get_server_log_path() {
+	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
+		get_server_log_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
+		server_log_path_caves="${DST_save_path}/$cluster_name/Caves/server_log.txt"
+	fi
+	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
+		get_server_log_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
+		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
+	fi
+}
+# 备份进行回档
+function get_server_save_path_caves() {
+	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
+		server_save_path_caves="${DST_save_path}/$cluster_name/Caves"
+		cd "$server_save_path_caves"/saves_bak || exit 
+		echo "当前存档备份列表"
+		ls
+		echo "请选择需要进行回档的备份名称"
+		read -r saves_name
+		if [ -e "$saves_name" ]; then
+			unzip -o "$saves_name" -d  "$server_save_path_caves"
+		else
+			echo "存档名输入有误，请重新输入"
+			get_server_save_path_caves
+		fi
+	else
+		echo "当前存档没有地下的内容！"
+		Main
+	fi
+}
+function get_server_save_path_master() {
+	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
+		server_save_path_master="${DST_save_path}/$cluster_name/Master"
+		cd "$server_save_path_master"/saves_bak || exit 
+		echo "当前存档备份列表"
+		ls
+		echo "请选择需要进行回档的备份名称"
+		read -r saves_name
+		if [ -e "$saves_name" ]; then
+			unzip -o "$saves_name" -d  "$server_save_path_master"
+		else
+			echo "存档名输入有误，请重新输入"
+			get_server_save_path_caves
+		fi
+	else
+		echo "当前存档没有地上的内容！"
+		Main
+	fi
+
 }
 
 # 获取最新版脚本
@@ -830,11 +891,23 @@ function auto_update() {
 		done
 	}
 	
+	# 获取天数信息
+	function get_daysInfo()
+	{
+		datatime=\$(date +%s%3N)
+		screen -r \"$process_name\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime cycles\\\")\$(printf \\\r)\"
+		sleep 1
+		presentday=\$(grep --text \"$get_server_log_path\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
+	}
+
 	timecheck=0
 	# 保持运行
 	while :
 			do
 				DST_now=\$(date +%Y年%m月%d日%H:%M)
+				presentday=1
+				get_daysInfo
+				daysInfo=\$presentday
 				timecheck=\$(( timecheck%750 ))
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
@@ -848,7 +921,8 @@ function auto_update() {
 						if [ \"\$master_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						zip -r \"bak_\${DST_now}\".zip $master_saves_path/save/
+						cd \"$master_saves_path\"|| exit
+						zip -r saves_bak/\"bak_\${daysInfo}days\".zip save/
 					fi
 					if [ -d \"$caves_saves_path\" ];then
 						cd \"$caves_saves_path\" || exit			
@@ -860,7 +934,8 @@ function auto_update() {
 						if [ \"\$caves_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						zip -r \"bak_\${DST_now}\".zip $caves_saves_path/save/
+						cd \"$caves_saves_path\"|| exit
+						zip -r saves_bak/\"bak_\${daysInfo}days\".zip save/
 					fi
 					
 				fi
