@@ -22,7 +22,7 @@
 # 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
 # 2022/10/08 UI改变,重启策略更改
 # 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
-# 2022/10/21 更改备份命名格式
+# 2022/11/28 更改备份命名格式，增加使用备份存档回档的功能
 
 : "
 主要功能如下:
@@ -922,7 +922,7 @@ function auto_update() {
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$master_saves_path\"|| exit
-						zip -r saves_bak/\"bak_\${daysInfo}days\".zip save/
+						zip -r saves_bak/\"master_\${daysInfo}days\".zip save/
 					fi
 					if [ -d \"$caves_saves_path\" ];then
 						cd \"$caves_saves_path\" || exit			
@@ -935,7 +935,7 @@ function auto_update() {
 							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$caves_saves_path\"|| exit
-						zip -r saves_bak/\"bak_\${daysInfo}days\".zip save/
+						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
 					fi
 					
 				fi
