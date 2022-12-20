@@ -415,17 +415,6 @@ function console() {
 	done
 }
 
-# 日志文件路径
-function get_server_log_path() {
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
-		get_server_log_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-		server_log_path_caves="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-	fi
-	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-		get_server_log_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
-		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
-	fi
-}
 
 # 日志文件路径
 function get_server_log_path() {
@@ -438,6 +427,7 @@ function get_server_log_path() {
 		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
 	fi
 }
+
 # 备份进行回档
 function get_server_save_path_caves() {
 	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
@@ -918,8 +908,8 @@ function auto_update() {
 						fi
 						cd \"$master_saves_path/saves_bak\" || exit
 						master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$master_saves_bak\" -gt 21 ];then
-							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+						if [ \"\$master_saves_bak\" -gt 101 ];then
+							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$master_saves_path\"|| exit
 						zip -r saves_bak/\"master_\${daysInfo}days\".zip save/
@@ -931,8 +921,8 @@ function auto_update() {
 						fi
 						cd \"$caves_saves_path/saves_bak\" || exit
 						caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$caves_saves_bak\" -gt 21 ];then
-							find . -maxdepth 1 -mtime +3 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+						if [ \"\$caves_saves_bak\" -gt 101 ];then
+							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$caves_saves_path\"|| exit
 						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
