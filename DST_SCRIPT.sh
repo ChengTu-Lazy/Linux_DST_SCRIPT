@@ -1343,18 +1343,20 @@ function PreLibrary() {
 		echo "# 加载 Ubuntu Linux 环境 #"
 		echo "##########################"
 		echo ""
+		sudo apt-get -y clean
 		sudo apt-get -y update
 		sudo apt-get -y wget
 
-		# 加载 32bit 库
-		sudo apt-get -y install lib32gcc1
-		sudo apt-get -y install libc6-i386
+		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libc6-i386
 		sudo apt-get -y install libcurl4-gnutls-dev:i386
 		sudo dpkg --add-architecture i386
-		# 加载 64bit库
+
+		
 		sudo apt-get -y install lib64gcc1
-		sudo apt-get -y install lib64stdc++6
+		sudo apt-get -y install lib32gcc1
+		
 		sudo apt-get -y install libcurl4-gnutls-dev
 
 		#一些必备工具
