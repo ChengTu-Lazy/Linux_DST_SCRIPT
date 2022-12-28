@@ -356,7 +356,7 @@ function start_serverCheck() {
 	cost_minutes=$((cost_time / 60))
 	cost_seconds=$((cost_time % 60))
 	cost_echo="$cost_minutes分$cost_seconds秒"
-	if [[ $cost_echo == "00分00秒" ]]; then
+	if [[ $cost_echo == "00分00秒" || $cost_echo == "0分0秒" ]]; then
 		echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
 		if [ "$os" == "Ubuntu" ]; then
 			echo ""
