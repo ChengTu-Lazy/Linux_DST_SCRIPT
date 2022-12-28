@@ -23,6 +23,7 @@
 # 2022/10/08 UI改变,重启策略更改
 # 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
 # 2022/11/28 更改备份命名格式，增加使用备份存档回档的功能
+# 2022/12/28 更改获取版本号为获取buildid，对可能出现的依赖问题进行简单的修复
 
 : "
 主要功能如下:
@@ -34,7 +35,7 @@
 
 ##全局默认变量
 #脚本版本
-DST_SCRIPT_version="1.6.8"
+DST_SCRIPT_version="1.6.9"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 #测试版token
@@ -352,7 +353,53 @@ function start_serverCheck() {
 	fi
 	end_time=$(date +%s)
 	cost_time=$((end_time - start_time))
-	echo -e "\r\e[92m本次开服花费时间:$((cost_time / 60))分$((cost_time % 60))秒\e[0m"
+	cost_minutes=$((cost_time / 60))
+	cost_seconds=$((cost_time % 60))
+	cost_echo="$cost_minutes分$cost_seconds秒"
+	if [[ $cost_echo == "00分00秒" ]]; then
+		echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
+		if [ "$os" == "Ubuntu" ]; then
+			echo ""
+			echo "##########################"
+			echo "# 加载 Ubuntu Linux 环境 #"
+			echo "##########################"
+			echo ""
+			sudo apt-get -y clean
+			sudo apt-get -y update
+			sudo apt-get -y wget
+			sudo apt-get install libstdc++6
+			sudo apt-get install lib32stdc++6
+
+		elif
+			[ "$os" == "CentOS" ]
+		then
+			echo ""
+			echo "##########################"
+			echo "# 加载 CentOS Linux 环境 #"
+			echo "##########################"
+			echo ""
+			sudo yum -y update
+			sudo yum -y wget
+			# 加载 32bit 库
+			sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
+			# 加载 64bit 库
+			sudo yum -y install glibc libstdc++ libcurl
+
+		elif [ "$os" == "Arch" ]; then
+			echo ""
+			echo "########################"
+			echo "# 加载 Arch Linux 环境 #"
+			echo "########################"
+			echo ""
+			sudo pacman -Syyy
+			sudo pacman -S --noconfirm wget screen
+			sudo pacman -S --noconfirm lib32-gcc-libs libcurl-gnutls
+		else
+			echo "该系统未被本脚本支持！"
+		fi
+	else 
+		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
+	fi
 }
 
 # 控制台
@@ -522,7 +569,7 @@ function auto_update() {
 	{
 		if [  -d \"$master_saves_path\" ];then
 			if [[ \$(screen -ls | grep -c \"$process_name_master\") -ne 1 ]]; then
-				shutdown_master
+				echo \"检测到地上服务器未开启或已关闭，正在重新开启中。。。\"
 				start_server_master
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
@@ -544,7 +591,7 @@ function auto_update() {
 		fi
 		if [ -d \"$caves_saves_path\" ];then
 			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
-				shutdown_caves
+				echo \"检测到地下服务器未开启或已关闭，正在重新开启中。。。\"
 				start_server_caves
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
@@ -593,13 +640,13 @@ function auto_update() {
 	#查看游戏更新情况
 	function CheckUpdate()
 	{
-		# #先更新服务器副本文件
-		# cd $HOME/steamcmd || exit
-		
+		cd $HOME/steamcmd || exit
+		# 判断一下对应开启的版本
 		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"$HOME/dst_beta/get_betaversion_info.txt\"
-			grep Test \"$HOME/dst_beta/get_betaversion_info.txt\" --before-context=20 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' | awk 'BEGIN {max = 0} {if (\$1+0 > max+0) max=\$1} END {print max}' > \"$HOME/dst_beta/betaversion_now.txt\"
-			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/betaversion_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst_beta/version.txt\") ]]; then
+			# 获取最新buildid		
+			./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/\"branches\"/,/^}/!d' | sed -n \"\/\\\"updatebeta\\\"\/,\/}\/p\" | grep -m 1 buildid  > \"$HOME/dst_beta/buildid_beta.txt\"
+			#查看buildid是否一致
+			if [[ \$( sed 's/[^0-9\]//g' \"\$HOME/dst_beta/buildid_beta.txt\" ) -gt \$( grep -m 1 buildid  $HOME/dst_beta/steamapps/appmanifest_343050.acf | sed 's/[^0-9\]//g') ]]; then
 				echo " "
 				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
 				echo " "
@@ -613,16 +660,10 @@ function auto_update() {
 				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
 			fi
 		else
-			curl 'https://forums.kleientertainment.com/game-updates/dst/' > \"\$HOME/dst/get_version_info.txt\"
-			# 获取所有版本列表,和test版本列表
-			grep cRelease \"\$HOME/dst/get_version_info.txt\" -A5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g' > \"\$HOME/dst/AllVersionList.txt\"
-			grep Test \"\$HOME/dst/get_version_info.txt\" -B5 | grep '\<[2-9][0-9][0-9][0-9][0-9][0-9]\>' | cut -d '<' -f1  | sed s'/\t//g'  > \"\$HOME/dst/TestVersionList.txt\"
-			# 取二者差集
-			sort -r  \"\$HOME/dst/AllVersionList.txt\"  \"\$HOME/dst/TestVersionList.txt\" | uniq -u > \"\$HOME/dst/UniqVersionList.txt\"
-			# 获取最新版本号
-			grep '[2-9][0-9][0-9][0-9][0-9][0-9]' \"\$HOME/dst/UniqVersionList.txt\" | head -n 1   > \"\$HOME/dst/version_now.txt\"
-			#查看副本文件中的版本号和当前游戏的版本号是否一致
-			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version_now.txt\" ) -gt \$(sed 's/[^0-9\]//g' \"\$HOME/dst/version.txt\") ]]; then
+			# 获取最新buildid
+			./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/\"branches\"/,/^}/!d' | sed -n \"/\\\"public\\\"/,/}/p\" | grep -m 1 buildid | sed 's/[^0-9\]//g'   > \"\$HOME/dst/buildid.txt\"
+			#查看buildid是否一致
+			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/buildid.txt\" ) -gt \$(  grep -m 1 buildid $HOME/dst/steamapps/appmanifest_343050.acf | sed 's/[^0-9\]//g') ]]; then
 				echo " "
 				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
 				echo " "
@@ -775,9 +816,9 @@ function auto_update() {
 		do
 			sleep 1
 			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
-				echo -e \"$cluster_name地上服务器正在关闭,请稍后。。。\"
+				echo -e \"$cluster_name地下服务器正在关闭,请稍后。。。\"
 			else
-				echo -e \"$cluster_name地上服务器已关闭!!!\"
+				echo -e \"$cluster_name地下服务器已关闭!!!\"
 				break
 			fi
 		done
@@ -844,7 +885,7 @@ function auto_update() {
 				sleep 1
 				echo -en \"\\r地下服务器开启中,请稍后...\"
 				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
+						echo -e \"\\n\\e[92m地下服务器开启成功!!!                \\e[0m\"
 						break
 				fi
 				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$caveslog_path\") -gt 0  ]]; then
@@ -927,7 +968,6 @@ function auto_update() {
 						cd \"$caves_saves_path\"|| exit
 						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
 					fi
-					
 				fi
 				((timecheck++))
 				CheckProcess
