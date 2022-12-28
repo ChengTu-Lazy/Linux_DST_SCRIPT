@@ -397,6 +397,7 @@ function start_serverCheck() {
 		else
 			echo "该系统未被本脚本支持！"
 		fi
+		echo "修复完成，请再次启动存档！！！"
 	else 
 		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
 	fi
