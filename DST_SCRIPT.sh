@@ -148,15 +148,15 @@ function howtostart() {
 			addmod
 			StartMaster
 			StartCaves
-			auto_update
 			start_serverCheck
+			auto_update
 			Main
 			;;
 		2)
 			addmod
 			StartMaster
-			auto_update
 			start_serverCheck
+			auto_update
 			Main
 			;;
 		3)
@@ -165,8 +165,8 @@ function howtostart() {
 		4)
 			addmod
 			StartCaves
-			auto_update
 			start_serverCheck
+			auto_update
 			Main
 			;;
 		5)
@@ -948,7 +948,6 @@ function auto_update() {
 			do
 				DST_now=\$(date +%Y年%m月%d日%H:%M)
 				CheckProcess
-				check
 				get_daysInfo
 				daysInfo=\$presentday
 				timecheck=\$(( timecheck%750 ))
@@ -978,24 +977,24 @@ function auto_update() {
 						if [ \"\$caves_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
-						cd \"$caves_saves_path\"|| exit
+						cd \"$caves_saves_path\" || exit
 						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
 					fi
-					cd 	\"$DST_save_path/$cluster_name\"
+					cd 	\"$DST_save_path/$cluster_name\" || exit
 					if [ ! -d \"$DST_save_path/$cluster_name/Player\" ];then
 						mkdir Player
 					fi
 					zip -r Player/\"playerlist_\${daysInfo}days\".zip \"playerlist.txt\"
 					rm  playerlist.txt
-					echo \"$DST_save_path/$cluster_name/Player\"
-					if [ \"$DST_save_path/$cluster_name/Player\" -gt 21 ];then
+					ZipNum_Player=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+					if [ \"\$ZipNum_Player\" -gt 21 ];then
 						find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 					fi
 				fi
 				((timecheck++))
 				CheckUpdate
 				CheckModUpdate
-				sleep 25
+				sleep 30
 			done
 	" >"${Cluster_bath}"/auto_update.sh
 	chmod 777 "${Cluster_bath}"/auto_update.sh
