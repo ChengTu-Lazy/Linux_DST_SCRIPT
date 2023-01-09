@@ -23,15 +23,7 @@
 # 2022/10/08 UI改变,重启策略更改
 # 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
 # 2022/11/28 更改备份命名格式，增加使用备份存档回档的功能
-# 2022/12/28 更改获取版本号为获取buildid，对可能出现的依赖问题进行简单的修复
-
-: "
-主要功能如下:
-不需要手动添加mod文件了,自动添加mod(使用的是klei提供dedicated_server_mods_setup.lua)
-自动更新服务器mod
-自动更新服务器
-崩档自动重启服务器
-"
+# 2023/01/09 新增存储玩家信息功能,位置在"${DST_save_path}"/"$cluster_name"/PlayerList/，方便查找id来ban人，查看房间人数方法调整，更改备份数量至20为上限
 
 ##全局默认变量
 #脚本版本
@@ -356,7 +348,7 @@ function start_serverCheck() {
 	cost_minutes=$((cost_time / 60))
 	cost_seconds=$((cost_time % 60))
 	cost_echo="$cost_minutes分$cost_seconds秒"
-	if [[ $cost_echo == "00分00秒" || $cost_echo == "0分0秒" ]]; then
+	if [[ $cost_echo == "00分00秒" ]]; then
 		echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
 		if [ "$os" == "Ubuntu" ]; then
 			echo ""
@@ -397,7 +389,6 @@ function start_serverCheck() {
 		else
 			echo "该系统未被本脚本支持！"
 		fi
-		echo "修复完成，请再次启动存档！！！"
 	else 
 		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
 	fi
@@ -423,7 +414,7 @@ function console() {
 		echo "                                                                                  "
 		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
 		echo "                                                                                  "
-		echo "	[7]利用备份回档-地下    [8]返回上一级"
+		echo "	[7]利用备份回档-地下   [8]返回上一级"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
@@ -450,7 +441,7 @@ function console() {
 				echo "已复活全体玩家！"
 				;;
 			5)
-				getplayerlist
+				GetPlayerList
 				;;
 			6) 
 				get_server_save_path_master
@@ -574,7 +565,7 @@ function auto_update() {
 				start_server_master
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				getplayerlist
+				GetPlayerList
 				if [ \"\$have_player_master\" == false ];then
 					c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
@@ -582,7 +573,7 @@ function auto_update() {
 				fi
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				getplayerlist
+				GetPlayerList
 				if [ \"\$have_player_master\" == false ];then
 					c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_master
@@ -596,7 +587,7 @@ function auto_update() {
 				start_server_caves
 			fi
 			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				getplayerlist
+				GetPlayerList
 				if [ \"\$have_player_caves\" == false ];then
 					c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
@@ -604,7 +595,7 @@ function auto_update() {
 				fi
 			fi
 			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				getplayerlist
+				GetPlayerList
 				if [ \"\$have_player_caves\" == false ];then
 					c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
 					shutdown_caves
@@ -614,13 +605,20 @@ function auto_update() {
 		fi
 	}
 	# 获取玩家列表
-	function getplayerlist()
+	function GetPlayerList()
 	{	
+		txt=\"-----------------------------------------------------\"
 		if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 ]]; then
 			allplayerslist=\$( date +%s%3N )
-			screen -r \"$process_name_master\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end\$(printf \\\\r)\"
-			sleep 5
-			list=\$( grep \"$server_log_path_master\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 | tail -n +2)
+			screen -r \"$process_name_master\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end end \$(printf \\\\r)\" 
+			sleep 1
+			list=\$( grep --text \"$server_log_path_master\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 )
+			nowtime=\$( date +'%Y-%m-%d %H:%M:%S')
+			{
+			echo  \"\$txt\"
+			echo  \"\$nowtime\"
+			echo  \"\$list\" 
+			} >> \"${DST_save_path}\"/\"$cluster_name\"/playerlist.txt
 			if [[ \"\$list\" != \"\" ]]; then
 				have_player_master=true
 			else
@@ -628,9 +626,15 @@ function auto_update() {
 			fi
 		elif [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
 			allplayerslist=\$( date +%s%3N )
-			screen -r \"$process_name_caves\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end\$(printf \\\\r)\"
-			sleep 5
-			list=\$( grep \"$server_log_path_caves\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 | tail -n +2)
+			screen -r \"$server_log_path_caves\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end end \$(printf \\\\r)\" 
+			sleep 1
+			list=\$( grep --text \"$server_log_path_caves\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 )
+			nowtime=\$( date +'%Y-%m-%d %H:%M:%S')
+			{
+			echo  \"\$txt\"
+			echo  \"\$nowtime\"
+			echo  \"\$list\" 
+			} >> \"${DST_save_path}\"/\"$cluster_name\"/playerlist.txt
 			if [[ \"\$list\" != \"\" ]]; then
 				have_player_caves=true
 			else
@@ -746,6 +750,7 @@ function auto_update() {
 	{
 		Shutdown
 		start_server
+		check
 	}
 	# 更新服务器
 	function UpdateServer()
@@ -842,6 +847,10 @@ function auto_update() {
 	function start_server_master()
 	{
 		screen -dmS  \"$process_name_master\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\" 
+		
+	}
+
+	function check(){
 		if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
 			while :
 			do
@@ -858,11 +867,11 @@ function auto_update() {
 				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$masterlog_path\") -gt 0  ]]; then
 					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
 					shutdown_master
-					break
+					start_server_master
 				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$masterlog_path\") -gt 0  ]]; then
 					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
 					shutdown_master
-					break
+					start_server_master
 				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$masterlog_path\") -gt 0 ]]; then
 					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
 					sleep 3
@@ -871,11 +880,6 @@ function auto_update() {
 				fi
 			done
 		fi
-	}
-	# 开启地下服务器
-	function start_server_caves()
-	{
-		screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
 		if [ \"\$(screen -ls | grep -c \"$process_name_caves\")\" -gt 0 ];then
 			while :
 			do
@@ -905,6 +909,12 @@ function auto_update() {
 				fi
 			done
 		fi
+	}
+
+	# 开启地下服务器
+	function start_server_caves()
+	{
+		screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
 	}
 
 	#自动添加存档所需的mod
@@ -937,10 +947,12 @@ function auto_update() {
 	while :
 			do
 				DST_now=\$(date +%Y年%m月%d日%H:%M)
-				presentday=1
+				CheckProcess
+				check
 				get_daysInfo
 				daysInfo=\$presentday
 				timecheck=\$(( timecheck%750 ))
+				GetPlayerList
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
 					if [  -d \"$master_saves_path\" ];then
@@ -950,7 +962,7 @@ function auto_update() {
 						fi
 						cd \"$master_saves_path/saves_bak\" || exit
 						master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$master_saves_bak\" -gt 101 ];then
+						if [ \"\$master_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$master_saves_path\"|| exit
@@ -963,18 +975,27 @@ function auto_update() {
 						fi
 						cd \"$caves_saves_path/saves_bak\" || exit
 						caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$caves_saves_bak\" -gt 101 ];then
+						if [ \"\$caves_saves_bak\" -gt 21 ];then
 							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$caves_saves_path\"|| exit
 						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
 					fi
+					cd 	\"$DST_save_path/$cluster_name\"
+					if [ ! -d \"$DST_save_path/$cluster_name/Player\" ];then
+						mkdir Player
+					fi
+					zip -r Player/\"playerlist_\${daysInfo}days\".zip \"playerlist.txt\"
+					rm  playerlist.txt
+					echo \"$DST_save_path/$cluster_name/Player\"
+					if [ \"$DST_save_path/$cluster_name/Player\" -gt 21 ];then
+						find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+					fi
 				fi
 				((timecheck++))
-				CheckProcess
 				CheckUpdate
 				CheckModUpdate
-				sleep 30
+				sleep 25
 			done
 	" >"${Cluster_bath}"/auto_update.sh
 	chmod 777 "${Cluster_bath}"/auto_update.sh
@@ -1129,7 +1150,7 @@ function serverinfo() {
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
 	getworldstate
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
-	getplayerlist
+	GetPlayerList
 	getmonster
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
@@ -1146,18 +1167,24 @@ function serverinfo() {
 }
 
 # 获取玩家列表
-function getplayerlist() {
+function GetPlayerList() {
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
-		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end$(printf \\r)"
-		sleep 5
-		list=$(grep "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)" 
+		sleep 1
+		list=$(grep --text "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 )
+		nowtime=$( date +'%Y-%m-%d %H:%M:%S')
+		txt="-----------------------------------------------------"
+		{
+		echo  "$txt"
+		echo  "$nowtime"
+		echo  "$list" 
+		} >> "${DST_save_path}"/"$cluster_name"/playerlist.txt
 		if [[ "$list" != "" ]]; then
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
 			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list" >"${DST_save_path}"/"$cluster_name"/playerlist.txt
 		else
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
@@ -1166,15 +1193,21 @@ function getplayerlist() {
 		fi
 	elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
-		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab)) end$(printf \\r)"
-		sleep 5
-		list=$(grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 | tail -n +2)
+		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end end $(printf \\r)" 
+		sleep 1
+		list=$(grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 )
+		nowtime=$( date +'%Y-%m-%d %H:%M:%S')
+		txt="-----------------------------------------------------"
+		{
+		echo  "$txt"
+		echo  "$nowtime"
+		echo  "$list" 
+		} >>"${DST_save_path}"/"$cluster_name"/playerlist.txt
 		if [[ "$list" != "" ]]; then
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
 			echo "$list"
 			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list" >"${DST_save_path}"/"$cluster_name"/playerlist.txt
 		else
 			echo -e "\e[92m服务器玩家列表:\e[0m"
 			echo -e "\e[92m================================================================================\e[0m"
