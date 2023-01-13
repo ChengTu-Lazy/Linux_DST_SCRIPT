@@ -23,33 +23,35 @@
 # 2022/10/08 UI改变,重启策略更改
 # 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
 # 2022/11/28 更改备份命名格式，增加使用备份存档回档的功能
-# 2023/01/09 新增存储玩家信息功能,位置在"${DST_save_path}"/"$cluster_name"/PlayerList/，方便查找id来ban人，查看房间人数方法调整，更改备份数量至20为上限
+# 2023/01/09 新增存储玩家信息功能,位置在"${DST_SAVE_PATH}"/"$cluster_name"/PlayerList/，方便查找id来ban人，查看房间人数方法调整，更改备份数量至20为上限
+# 2023/01/10 优化代码结构，更改保存人物信息为有人在服务器的时候再保存
+# 2023/01/11 更加智能的更新脚本，不在绝对路径更新到最高级目录
 
-##全局默认变量
+#测试版token
+BETA_TOKEN="updatebeta"
+# 饥荒存档位置
+DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
+# 默认游戏路径
+DST_DEFAULT_PATH="$HOME/DST"
+DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-DST_SCRIPT_version="1.6.9"
+script_version="1.7.0"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
-#测试版token
-beta_token="updatebeta"
-# 饥荒存档位置
-DST_save_path="$HOME/.klei/DoNotStarveTogether"
-# 脚本开启的服务器版本
-DST_game_version="正式版32位"
-# 当前游戏位置
-DST_game_path="$HOME/dst"
 # 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
-# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-flag=1
 #通知内容
 c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
+# 脚本当前所在目录
+script_path=$(pwd)
+# 脚本当前名称
+script_name=$(basename "$0")
 
 #主菜单
-function Main() {
+main() {
 	tput setaf 2
 	echo "============================================================"
-	printf "%s\n" "                     脚本版本:${DST_SCRIPT_version}                            "
+	printf "%s\n" "                     脚本版本:${script_version}                            "
 	echo "============================================================"
 	while :; do
 		echo "                                          	             "
@@ -62,47 +64,226 @@ function Main() {
 		echo "============================================================"
 		echo "                                                                                  "
 		echo -e "\e[92m请输入命令代号:\e[0m"
-		read -r main1
-		(case $main1 in
-			1)
-				PreLibrary
-				update_game
-				prepare
-				;;
+		read -r maininfo
+		if [ "$maininfo" == 1 ]; then
+			# 初始化环境
+			PreLibrary
+			prepare
+		elif [ "$maininfo" == 3 ] || [ "$maininfo" == 5 ] || [ "$maininfo" == 6 ]; then
+			get_cluster_name_processing
+		elif [ "$maininfo" == 2 ] || [ "$maininfo" == 7 ] || [ "$maininfo" == 8 ]; then
+			get_cluster_name
+		fi
+		(case $maininfo in
 			2)
-				get_cluster_name
-				start_server
+				# 开服
+				start_server "$cluster_name"
 				;;
-			3) close_server ;;
-			4) check_server ;;
-			5) console ;;
-			6) restart_server ;;
-			7) change_game_version ;;
-			8) list_all_mod ;;
-			9) get_mew_version ;;
+			3)
+				# 关服
+				close_server "$cluster_name"
+				;;
+			4)
+				# 查看服务器进程
+				check_server "$cluster_name"
+				;;
+			5)
+				# 控制台
+				console "$cluster_name"
+				;;
+			6)
+				# 重启服务器
+				restart_server "$cluster_name"
+				;;
+			7)
+				# 更换存档所开启的游戏版本
+				change_game_version "$cluster_name"
+				;;
+			8)
+				# 列出存档所使用的所有的mod
+				list_all_mod "$cluster_name"
+				;;
+			9)
+				# 获取最新脚本
+				get_latest_version
+				;;
 			esac)
 	done
 }
-
-# 重启服务器
-function restart_server() {
-	close_server
-	howtostart
+# 控制台
+console() {
+	cluster_name=$1
+	clear
+	while :; do
+		echo "==============================请输入需要进行的操作序号=============================="
+		echo "                                                                                  "
+		echo "	[1]服务器信息          [2]回档          [3]发布通知			"
+		echo "                                                                                  "
+		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
+		echo "                                                                                  "
+		echo "	[7]利用备份回档-地下   [8]返回上一级"
+		echo "                                                                                  "
+		echo "=================================================================================="
+		echo "                                                                                  "
+		echo -e "\e[92m请输入命令代号:\e[0m"
+		read -r consoleinfo
+		init "$cluster_name"
+		(case $consoleinfo in
+			1) serverinfo ;;
+			2)
+				echo "请输入你要回档的天数(1~5):"
+				read -r rollbackday
+				screen -r "$process_name_main" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
+				echo "已回档$rollbackday 天！"
+				;;
+			3)
+				echo "请输入你要发布的公告:"
+				read -r str
+				screen -r "$process_name_main" -p 0 -X stuff "c_announce(\"$str\")$(printf \\r)"
+				echo "已发布通知！"
+				;;
+			4)
+				screen -r "$process_name_main" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
+				echo "已复活全体玩家！"
+				;;
+			5)
+				get_playerList
+				;;
+			6)
+				get_server_save_path_master
+				;;
+			7)
+				get_server_save_path_caves
+				;;
+			8) main ;;
+			esac)
+	done
+}
+# 通过版本号获取参数
+init_getByVersion() {
+	if [ ! -d "$script_files_path" ]; then
+		mkdir "$script_files_path"
+	fi
+	if [ ! -f "$script_files_path/gameversion.txt" ]; then
+		echo "正式版32位" >"$script_files_path/gameversion.txt"
+	fi
+	# 存档需要开启的游戏版本
+	if [ ! -f "$script_files_path/gameversion.txt" ]; then
+		echo "$cluster_dst_game_version" >"$script_files_path/gameversion.txt"
+	fi
+	cluster_dst_game_version=$(cat "$script_files_path/gameversion.txt")
+	# 获取存档开启方式flag
+	cluster_flag=$(get_cluster_flag "$cluster_name")
+	# 开启存档所需要的开启的应用名及其位置
+	if [[ $(grep -c "正式版" "$script_files_path/gameversion.txt") -gt 0 ]]; then
+		gamesPath="$DST_DEFAULT_PATH"
+		buildid_version_flag="public"
+	else
+		gamesPath="$DST_DEFAULT_PATH_BETA"
+		buildid_version_flag="updatebeta"
+	fi
+	dedicated_server_mods_setup="${gamesPath}"/mods/dedicated_server_mods_setup.lua
+	dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin
+	if [[ $(grep -c "32位" "$script_files_path"/gameversion.txt) -gt 0 ]]; then
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
+	else
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
+	fi
 }
 
-# 开启服务器
-function start_server() {
+# 通过存档名获取参数
+init_get_cluster_main() {
+	if [ -d "$master_saves_path" ]; then
+		cluster_main="$master_saves_path"
+	else
+		cluster_main="$caves_saves_path"
+	fi
+}
+
+# 路径初始化（确认存档之后）
+init() {
+	cluster_name=$1
 	if [ "$cluster_name" == "" ]; then
-		Main
-	elif [ -d "${DST_save_path}/$cluster_name" ]; then
-		get_process_name
+		return 0
+	fi
+	# 存档所在路径
+	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
+	# 地上存档的路径
+	master_saves_path="$cluster_path/Master"
+	# 地下存档的路径
+	caves_saves_path="$cluster_path/Caves"
+	# 脚本文件所在文件夹
+	script_files_path="$cluster_path/ScriptFiles"
+	# 保存buildid的位置
+	buildid_version_path="$gamesPath/bin/buildid.txt"
+	# 保存独立存档mod文件的位置
+	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+	# 各个世界模组所在的位置
+	mods_path_master="$ugc_mods_path"/Master/content/322330
+	mods_path_caves="$ugc_mods_path"/Caves/content/322330
+	# 通过版本号获取参数
+	init_getByVersion
+	# 通过存档情况获得主要采用的存档
+	init_get_cluster_main
+	# 获取当前存档的世界分布情况
+	get_cluster_flag "$cluster_name"
+	# 获取存档的
+	get_server_log_path "$cluster_name"
+	# 获取进程名（判断是否有开启）
+	get_process_name "$cluster_name"
+	# 获取mod所在目录
+	modoverrides_path=$cluster_main/modoverrides.lua
+	# 判断是否成功开启存档的标志
+	check_flag=0
+}
+
+# 选择开启方式
+howtostart() {
+	cluster_name=$1
+	init "$cluster_name"
+	addmod "$cluster_name"
+	(case $cluster_flag in
+		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
+		1)
+			start_server_select "$cluster_name" "$process_name_master" "start_server_master.sh"
+			start_server_select "$cluster_name" "$process_name_caves" "start_server_caves.sh"
+			;;
+		2)
+			start_server_select "$cluster_name" "$process_name_master" "start_server_master.sh"
+			;;
+		3)
+			echo "这行纯粹凑字数,没用的"
+			;;
+		4)
+			start_server_select "$cluster_name" "$process_name_caves" "start_server_caves.sh"
+			;;
+		5)
+			echo "存档没有内容,请自行创建！！！"
+			;;
+		esac)
+	if [ "$cluster_flag" == "" ]; then
+		echo "出错了,请联系作者QQ1549737287!!!"
+	else
+		start_server_check "$cluster_name"
+		if [ "$cluster_flag" != 5 ] && [[ $check_flag == 1 ]] && [[ $2 == "" ]]; then
+			auto_update "$cluster_name"
+		fi
+	fi
+}
+# 开启服务器
+start_server() {
+	cluster_name=$1
+	init "$cluster_name"
+	if [ "$cluster_name" == "" ]; then
+		main
+	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
 		if [ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ]; then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
 		elif [ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ]; then
 			echo "该服务器已开启地上服务器,请先关闭再启动！！"
 		else
 			# 判断是否有token文件
-			cd "${DST_save_path}/$cluster_name" || exit
+			cd "${DST_SAVE_PATH}/$cluster_name" || exit
 			if [ ! -e "cluster_token.txt" ]; then
 				while [ ! -e "cluster_token.txt" ]; do
 					echo "该存档没有token文件,是否自动添加作者的token"
@@ -118,840 +299,453 @@ function start_server() {
 					fi
 				done
 			fi
-			howtostart
+			howtostart "$cluster_name"
 		fi
 	else
-		echo "未找到这个存档"
+		echo -e "\e[31m未找到这个存档 \e[0m"
 	fi
 }
-
-#确认存档情况
-function get_cluster_flag() {
-	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-		flag=4
+#开启服务器
+start_server_select() {
+	cluster_name=$1
+	init "$cluster_name"
+	process_name_select=$2
+	script_start_server=$3
+	if [ "$script_start_server" == "start_server_master.sh" ]; then
+		shard_name="Master"
 	else
-		flag=7
+		shard_name="Caves"
 	fi
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
-		flag=$((flag - 3))
-	else
-		flag=$((flag - 2))
-	fi
-}
-
-# 选择开启方式
-function howtostart() {
-	get_cluster_flag
-	(case $flag in
-		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-		1)
-			addmod
-			StartMaster
-			StartCaves
-			start_serverCheck
-			auto_update
-			Main
-			;;
-		2)
-			addmod
-			StartMaster
-			start_serverCheck
-			auto_update
-			Main
-			;;
-		3)
-			echo "这行纯粹凑字数,没用的"
-			;;
-		4)
-			addmod
-			StartCaves
-			start_serverCheck
-			auto_update
-			Main
-			;;
-		5)
-			echo "存档没有内容,请自行创建！！！"
-			Main
-			;;
-		esac)
-}
-
-# 关闭服务器
-function close_server() {
-	get_cluster_name_processing
-	get_cluster_flag
-	get_process_name
-	if [ "$cluster_name" == "" ]; then
-		Main
-	elif [ -d "${DST_save_path}/$cluster_name" ]; then
-		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ "$flag" == 1 ]; then
-			close_server_autoUpdate
-			close_server_master
-			close_server_caves
-		elif [ "$flag" == 2 ]; then
-			close_server_autoUpdate
-			close_server_master
-		elif [ "$flag" == 4 ]; then
-			close_server_autoUpdate
-			close_server_caves
-		fi
-		if [ -d "${DST_save_path}/$cluster_name" ]; then
-			while :; do
-				sleep 1
-				if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 || $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-					echo -e "\e[92m进程 $cluster_name 正在关闭,请稍后。。。\e[0m"
-				else
-					echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
-					break
-				fi
-			done
-		fi
-	else
-		echo "未找到这个存档"
-	fi
-}
-
-# 存档进程名
-function get_cluster_name_processing() {
-	printf '=%.0s' {1..12}
-	echo -e "请确保要关闭的存档版本和当前脚本版本一致(不区分位数)\c"
-	printf '=%.0s' {1..12}
-	echo ""
-	screen -ls
-	printf '=%.0s' {1..28}
-	echo -e "请输入要关闭的存档名\c"
-	printf '=%.0s' {1..28}
-	echo ""
-	read -r cluster_name
-	if [ "$cluster_name" == "" ]; then
-		echo "存档名输入有误！"
-		Main
-	elif [ ! -d "${DST_save_path}/$cluster_name" ]; then
-		echo "存档不存在！"
-		Main
-	fi
-}
-
-# 关闭服务器地上部分
-function close_server_master() {
-	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
-		for i in $(screen -ls | grep -w "$process_name_master" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地上服务器正在发布公告.  "
-			sleep 1.5
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地上服务器正在发布公告.. "
-			sleep 1.5
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地上服务器正在发布公告..."
-			sleep 1.5
-			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-			echo -e "\n\e[92m地上服务器公告发布完毕!!!                \e[0m"
-		done
-	fi
-}
-
-# 关闭服务器地下部分
-function close_server_caves() {
-	if [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-		for i in $(screen -ls | grep -w "$process_name_caves" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地下服务器正在发布公告.  "
-			sleep 2
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地下服务器正在发布公告.. "
-			sleep 2
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r地下服务器正在发布公告..."
-			sleep 2
-			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-			echo -e "\n\e[92m地下服务器公告发布完毕!!!                \e[0m"
-		done
-	fi
-}
-
-# 关闭服务器自动管理部分
-function close_server_autoUpdate() {
-	if [ "$(screen -ls | grep -c "$process_name_AutoUpdate")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
-		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
-			kill "$i"
-		done
-	else
-		echo "未找到$process_name_AutoUpdate!"
-	fi
+	echo "#!/bin/bash
+	cd \"$gamesPath/bin\" || exit
+	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
+	run_shared+=(-console)
+	run_shared+=(-cluster $cluster_name)
+	run_shared+=(-monitor_parent_process $)
+	\"\${run_shared[@]}\" -shard $shard_name" >"$script_files_path"/"$script_start_server"
+	grep -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g' > "$script_files_path"/"cluster_game_buildid.txt"
+	chmod 777 "$script_files_path"/"$script_start_server"
+	screen -dmS "$process_name_select" /bin/sh -c "$script_files_path/$script_start_server"
 }
 
 #检查是否成功开启
-function start_serverCheck() {
-	masterlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
-	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
+start_server_check() {
+	cluster_name=$1
+	init "$cluster_name"
 	start_time=$(date +%s)
 	if [[ "$(screen -ls | grep -c "$process_name_master")" -gt 0 ]]; then
-		while :; do
-			sleep 1
-			echo -en "\r地上服务器开启中,请稍后.  "
-			sleep 1
-			echo -en "\r地上服务器开启中,请稍后.. "
-			sleep 1
-			echo -en "\r地上服务器开启中,请稍后..."
-			if [[ $(grep "Sim paused" -c "$masterlog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$masterlog_path") -gt 0 ]]; then
-				echo -e "\n\e[92m地上服务器开启成功!!!                \e[0m"
-				break
-			fi
-			if [[ $(grep "Your Server Will Not Start !!!" -c "$masterlog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
-				close_server_master
-				break
-			elif [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$masterlog_path") -gt 0 ]]; then
-				echo "地上服务器开启未成功,端口冲突啦，改下端口吧！"
-				close_server_master
-				break
-			elif [[ $(grep "Failed to send shard broadcast message" -c "$masterlog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
-				sleep 3
-				close_server_master
-				StartMaster
-			fi
-		done
+		check_flag=0
+		start_server_check_select "地上" "$server_log_path_master"
 	fi
 	if [[ "$(screen -ls | grep -c "$process_name_caves")" -gt 0 ]]; then
-		while :; do
-			sleep 1
-			echo -en "\r地下服务器开启中,请稍后.  "
-			sleep 1
-			echo -en "\r地下服务器开启中,请稍后.. "
-			sleep 1
-			echo -en "\r地下服务器开启中,请稍后..."
-			if [[ $(grep "Sim paused" -c "$caveslog_path") -gt 0 || $(grep "shard LUA is now ready!" -c "$caveslog_path") -gt 0 ]]; then
-				echo -e "\n\e[92m地下服务器开启成功!!!                \e[0m"
-				break
-			fi
-			if [[ $(grep "Your Server Will Not Start !!!" -c "$caveslog_path") -gt 0 || $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。"
-				close_server_caves
-				break
-			elif [[ $(grep "Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE" -c "$caveslog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,端口冲突啦，改下端口吧！"
-				close_server_caves
-				break
-			elif [[ $(grep "Failed to send shard broadcast message" -c "$caveslog_path") -gt 0 ]]; then
-				echo "服务器开启未成功,可能网络有点问题,正在自动重启。"
-				sleep 3
-				close_server_caves
-				StartCaves
-			fi
-		done
+		check_flag=0
+		start_server_check_select "地下" "$server_log_path_caves"
 	fi
 	end_time=$(date +%s)
 	cost_time=$((end_time - start_time))
 	cost_minutes=$((cost_time / 60))
 	cost_seconds=$((cost_time % 60))
 	cost_echo="$cost_minutes分$cost_seconds秒"
-	if [[ $cost_echo == "00分00秒" ]]; then
-		echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
-		if [ "$os" == "Ubuntu" ]; then
-			echo ""
-			echo "##########################"
-			echo "# 加载 Ubuntu Linux 环境 #"
-			echo "##########################"
-			echo ""
-			sudo apt-get -y clean
-			sudo apt-get -y update
-			sudo apt-get -y wget
-			sudo apt-get install libstdc++6
-			sudo apt-get install lib32stdc++6
-
-		elif
-			[ "$os" == "CentOS" ]
-		then
-			echo ""
-			echo "##########################"
-			echo "# 加载 CentOS Linux 环境 #"
-			echo "##########################"
-			echo ""
-			sudo yum -y update
-			sudo yum -y wget
-			# 加载 32bit 库
-			sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
-			# 加载 64bit 库
-			sudo yum -y install glibc libstdc++ libcurl
-
-		elif [ "$os" == "Arch" ]; then
-			echo ""
-			echo "########################"
-			echo "# 加载 Arch Linux 环境 #"
-			echo "########################"
-			echo ""
-			sudo pacman -Syyy
-			sudo pacman -S --noconfirm wget screen
-			sudo pacman -S --noconfirm lib32-gcc-libs libcurl-gnutls
-		else
-			echo "该系统未被本脚本支持！"
-		fi
-	else 
+	if [ $cost_echo == "00分00秒" ] || [ $cost_echo == "0分0秒" ]; then
+		start_server_check_fix
+	else
 		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
+		check_flag=1
+		sleep 1
+		return 1
 	fi
 }
 
-# 控制台
-function console() {
-	printf '=%.0s' {1..38}
-	echo -e "当前已开启的存档进程\c"
-	printf '=%.0s' {1..38}
-	echo ""
-	screen -ls
-	printf '=%.0s' {1..38}
-	echo -e "请输入要操作的存档名\c"
-	printf '=%.0s' {1..38}
-	echo ""
-	read -r cluster_name
-	clear
+# start_server_check解耦部分
+start_server_check_select() {
+	w_flag=$1
+	logpath_flag=$2
+	mod_flag=1
+	download_flag=1
 	while :; do
-		echo "==============================请输入需要进行的操作序号=============================="
-		echo "                                                                                  "
-		echo "	[1]服务器信息          [2]回档          [3]发布通知			"
-		echo "                                                                                  "
-		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
-		echo "                                                                                  "
-		echo "	[7]利用备份回档-地下   [8]返回上一级"
-		echo "                                                                                  "
-		echo "=================================================================================="
-		echo "                                                                                  "
-		echo -e "\e[92m请输入命令代号:\e[0m"
-		read -r main2
-		get_process_name
-		get_server_log_path
-		(case $main2 in
-			1) serverinfo ;;
-			2)
-				echo "请输入你要回档的天数(1~5):"
-				read -r rollbackday
-				screen -r "$process_name" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
-				echo "已回档$rollbackday 天！"
-				;;
-			3)
-				echo "请输入你要发布的公告:"
-				read -r str
-				screen -r "$process_name" -p 0 -X stuff "c_announce(\"$str\")$(printf \\r)"
-				echo "已发布通知！"
-				;;
-			4)
-				screen -r "$process_name" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
-				echo "已复活全体玩家！"
-				;;
-			5)
-				GetPlayerList
-				;;
-			6) 
-				get_server_save_path_master
-				 ;;
-			7) 
-				get_server_save_path_caves
-				 ;;
-			8) Main ;;
-			esac)
+		if [ "$check_flag" == 0 ] && [ $mod_flag == 0 ]; then
+			echo -en "\r$w_flag服务器开启中,请稍后.                              "
+			sleep 1
+			echo -en "\r$w_flag服务器开启中,请稍后..                             "
+			sleep 1
+			echo -en "\r$w_flag服务器开启中,请稍后...                            "
+			sleep 1
+		fi
+		if [ $mod_flag == 1 ] && [[ $(grep "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -eq 0 ]]; then
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后.                    "
+			sleep 1
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后..                   "
+			sleep 1
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后...                  "
+			sleep 1
+		fi
+		if [[ $(grep "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
+			echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
+			mod_flag=0
+			download_flag=0
+		elif [[ $(grep "[Workshop] OnDownloadPublishedFile" -c "$logpath_flag") -gt 0 ]] && [ $download_flag == 1 ]; then
+			sleep 1
+			echo -en "\r$w_flag服务器mod正在下载中,请稍后.                         "
+			sleep 1
+			echo -en "\r$w_flag服务器mod正在下载中,请稍后..                        "
+			sleep 1
+			echo -en "\r$w_flag服务器mod正在下载中,请稍后...                       "
+			sleep 1
+		fi
+
+		if [[ $(grep "Sim paused" -c "$logpath_flag") -gt 0 || $(grep "shard LUA is now ready!" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 0 ] && [ $download_flag == 0 ] && [ "$check_flag" == 0 ]; then
+			echo -e "\r\e[92m$w_flag服务器开启成功!!!                          \e[0m"
+			sleep 1
+			check_flag=1
+			break
+		fi
+		if [[ $(grep "Your Server Will Not Start !!!" -c "$logpath_flag") -gt 0 ]]; then
+			echo -e "\r\e[1;31m$w_flag服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。\e[0m"
+			close_server "$cluster_name"
+			start_server "$cluster_name"
+		fi
+		if [[ $(grep "PushNetworkDisconnectEvent With Reason: \"ID_DST_INITIALIZATION_FAILED\", reset: false" -c "$logpath_flag") -gt 0 ]]; then
+			echo -e "\r\e[1;31m$w_flag服务器开启未成功,端口冲突啦，改下端口吧,正在关闭服务器，请调整后重新开服！！！            \e[0m"
+			close_server "$cluster_name"
+			check_flag=0
+			return 0
+		fi
+		if [[ $(grep "LAN only servers must use a port in the range of [10998, 11018]" -c "$logpath_flag") -gt 0 ]]; then
+			echo -e "\r\e[1;31m$w_flag服务器开启未成功,端口冲突啦，改下端口吧,本地服务器端口范围是[10998, 11018],正在关闭服务器，请调整后重新开服！！！            \e[0m"
+			close_server "$cluster_name"
+			check_flag=0
+			return 0
+		fi
+		if [[ $(grep "Failed to send shard broadcast message" -c "$logpath_flag") -gt 0 ]]; then
+			sleep 2
+			echo -e "\r\e[1;33m$w_flag服务器开启未成功,可能网络有点问题,正在自动重启。                             \e[0m"
+			close_server "$cluster_name"
+			start_server "$cluster_name"
+		fi
+	done
+}
+start_server_check_fix() {
+	echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
+	if [ "$os" == "Ubuntu" ]; then
+		echo ""
+		echo "##########################"
+		echo "# 加载 Ubuntu Linux 环境 #"
+		echo "##########################"
+		echo ""
+		sudo apt-get install libstdc++6
+		sudo apt-get install lib32stdc++6
+	elif
+		[ "$os" == "CentOS" ]
+	then
+		echo ""
+		echo "##########################"
+		echo "# 加载 CentOS Linux 环境 #"
+		echo "##########################"
+		echo ""
+		# 加载 32bit 库
+		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
+		# 加载 64bit 库
+		sudo yum -y install glibc libstdc++ libcurl
+
+	elif [ "$os" == "Arch" ]; then
+		echo ""
+		echo "########################"
+		echo "# 加载 Arch Linux 环境 #"
+		echo "########################"
+		echo ""
+		sudo pacman -Syyy
+		sudo pacman -S --noconfirm wget screen
+		sudo pacman -S --noconfirm lib32-gcc-libs libcurl-gnutls
+	else
+		echo -e "\e[31m 该系统未被本脚本支持！ \e[0m"
+	fi
+}
+#自动添加存档所需的mod
+addmod() {
+	cluster_name=$1
+	if [ -e "$modoverrides_path" ]; then
+		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
+		cd "${gamesPath}"/mods || exit
+		rm -rf dedicated_server_mods_setup.lua
+		sleep 0.1
+		echo "" >>dedicated_server_mods_setup.lua
+		sleep 0.1
+		grep "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
+			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
+			echo "ServerModCollectionSetup(\"$line\")" >>"$dedicated_server_mods_setup"
+			sleep 0.05
+			echo -e "\e[92m$line Mod添加完成\e[0m"
+		done
+		echo -e "\e[92mMod添加完成!!!\e[0m"
+	else
+		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
+	fi
+}
+
+# 重启服务器
+restart_server() {
+	cluster_name=$1
+	auto_flag=$2
+	close_server "$cluster_name" "$auto_flag"
+	howtostart "$cluster_name" "$auto_flag"
+}
+# 更新游戏
+update_game() {
+	version_flag=$1
+	cd "$HOME/steamcmd" || exit
+	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
+	if [[ ${version_flag} == "DEFALUT" ]]; then
+		echo "同步最新正式版游戏本体内容中。。。"
+		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+	else
+		echo "同步最新测试版版游戏本体内容中。。。"
+		./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+	fi
+}
+
+# 关闭服务器
+close_server() {
+	cluster_name=$1
+	if [ "$cluster_name" == "" ]; then
+		main
+	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+		if [ "$2" == "" ];then
+			close_server_autoUpdate "$cluster_name"
+		fi
+		# 进程名称符合就删除
+		while :; do
+			sleep 1
+			if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
+				close_server_select "$process_name_master" "地上"
+			elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
+				close_server_select "$process_name_caves" "地下"
+			else
+				echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
+				break
+			fi
+		done
+	else
+		echo -e "\e[1;31m未找到这个存档 \e[0m"
+	fi
+}
+
+# 关闭服务器解耦部分
+close_server_select() {
+	process_name_close=$1
+	world_close_flag=$2
+	for i in $(screen -ls | grep -w "$process_name_close" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
+		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+		echo -en "\r$world_close_flag服务器正在发布公告.  "
+		sleep 1.5
+		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+		echo -en "\r$world_close_flag服务器正在发布公告.. "
+		sleep 1.5
+		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+		echo -en "\r$world_close_flag服务器正在发布公告..."
+		sleep 1.5
+		screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
+		echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!                \e[0m"
+	done
+	while :; do
+		sleep 1
+		if [[ $(screen -ls | grep -c "$process_name_close") -gt 0 ]]; then
+			sleep 1.5
+			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.  "
+			sleep 1.5
+			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.. "
+			sleep 1.5
+			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后..."
+		else
+			echo -e "\r\e[92m$world_close_flag进程 $cluster_name 已关闭!!!                    \e[0m"
+			sleep 1
+			break
+		fi
 	done
 }
 
-
-# 日志文件路径
-function get_server_log_path() {
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
-		get_server_log_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-		server_log_path_caves="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-	fi
-	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-		get_server_log_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
-		server_log_path_master="${DST_save_path}/$cluster_name/Master/server_log.txt"
+# 关闭服务器自动管理部分
+close_server_autoUpdate() {
+	process_name_AutoUpdate="AutoUpdate $1"
+	process_name_AutoUpdate_old="DST $1 AutoUpdate"
+	if [ "$(screen -ls | grep -c "$process_name_AutoUpdate")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
+		for i in $(screen -ls | grep -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
+			kill "$i"
+		done
+	elif [ "$(screen -ls | grep -c "$process_name_AutoUpdate_old")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
+		for i in $(screen -ls | grep -w "$process_name_AutoUpdate_old" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
+			kill "$i"
+		done
+	else
+		echo -e "\e[1;33m$process_name_AutoUpdate 并未执行! \e[0m"
 	fi
 }
 
-# 备份进行回档
-function get_server_save_path_caves() {
-	if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
-		server_save_path_caves="${DST_save_path}/$cluster_name/Caves"
-		cd "$server_save_path_caves"/saves_bak || exit 
-		echo "当前存档备份列表"
-		ls
-		echo "请选择需要进行回档的备份名称"
-		read -r saves_name
-		if [ -e "$saves_name" ]; then
-			unzip -o "$saves_name" -d  "$server_save_path_caves"
-		else
-			echo "存档名输入有误，请重新输入"
-			get_server_save_path_caves
+
+#查看游戏更新情况
+checkupdate() {
+	cluster_name=$1
+	init "$cluster_name"
+	DST_now=$(date +%Y年%m月%d日%H:%M)
+	cd "$HOME"/steamcmd || exit
+	# 判断一下对应开启的版本
+	# 获取最新buildid
+	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	#查看buildid是否一致
+	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
+		echo " "
+		echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
+		echo " "
+		# 先检查游戏本体是不是最新的，如果是的话，那就直接重启存档就可以了,不然的话就先更新游戏本体
+		if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(grep -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g') ]]; then
+			# 更新游戏本体
+			if [ "$buildid_version_flag" == "public" ];then
+				echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
+				update_game DEFAULT
+			else
+				echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
+				update_game BETA
+			fi
+		fi
+		# 重启该存档，但不关闭当前进程
+		restart_server  "$cluster_name"  -AUTO
+	else
+		echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
+	fi
+}
+
+#查看游戏mod更新情况
+checkmodupdate() {
+	cluster_name=$1
+	init "$cluster_name"
+	DST_now=$(date +%Y年%m月%d日%H:%M)
+	echo " "
+	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新。。。\e[0m"
+	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
+	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
+	if [ "$cluster_flag" == 1 ] || [ "$cluster_flag" == 2 ]; then
+		# NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
+		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		if [[ $(grep "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_master}") -gt 0 ]]; then
+			DST_has_mods_update=true
+		fi
+	elif [ "$cluster_flag" == 4 ]; then
+		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Caves -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		if [[ $(grep "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_caves}") -gt 0 ]]; then
+			DST_has_mods_update=true
 		fi
 	else
-		echo "当前存档没有地下的内容！"
-		Main
+		DST_has_mods_update=false
+	fi
+	if [[ $(grep "DownloadPublishedFile" -c "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt") -gt 0 ]]; then
+		DST_has_mods_update=true
+	else
+		DST_has_mods_update=false
+	fi
+	if [ ${DST_has_mods_update} == true ]; then
+		echo " "
+		echo -e "\e[31m ${DST_now}:Mod 有更新！ \e[0m"
+		echo " "
+		c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
+		restart_server "$cluster_name"
+	elif [ ${DST_has_mods_update} == false ]; then
+		echo " "
+		echo -e "\e[92m ${DST_now}:Mod 没有更新! \e[0m"
+		echo " "
 	fi
 }
-function get_server_save_path_master() {
-	if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-		server_save_path_master="${DST_save_path}/$cluster_name/Master"
-		cd "$server_save_path_master"/saves_bak || exit 
-		echo "当前存档备份列表"
-		ls
-		echo "请选择需要进行回档的备份名称"
-		read -r saves_name
-		if [ -e "$saves_name" ]; then
-			unzip -o "$saves_name" -d  "$server_save_path_master"
-		else
-			echo "存档名输入有误，请重新输入"
-			get_server_save_path_caves
+
+#查看进程执行情况
+checkprocess() {
+	cluster_name=$1
+	init "$cluster_name"
+	if [ -d "$master_saves_path" ]; then
+		checkprocess_select "$cluster_name" "地上"
+	fi
+	if [ -d "$caves_saves_path" ]; then
+		checkprocess_select "$cluster_name" "地下"
+	fi
+}
+
+checkprocess_select() {
+	cluster_name=$1
+	world_check_flag=$2
+	if [ "$world_check_flag" == "地上" ]; then
+		script_name="start_server_master.sh"
+		log_path=$server_log_path_master
+		process_name_check=$process_name_master
+	else
+		script_name="start_server_caves.sh"
+		log_path=$server_log_path_caves
+		process_name_check=$process_name_caves
+	fi
+	if [[ $(screen -ls | grep -c "$process_name_check") -eq 1 ]]; then
+		echo "$world_check_flag服务器运行正常"
+	else
+		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
+		start_server_select "$cluster_name" "$process_name_check" "$script_name"
+		start_server_check_select "$world_check_flag" "$log_path" 
+	fi
+
+	if [[ $(grep "Failed to send server broadcast message" -c "${log_path}") -gt 0 ]] || [[ $(grep "Failed to send server listings" -c "${log_path}") -gt 0 ]]; then
+		get_playerList "$cluster_name"
+		if [ "$have_player" == false ]; then
+			c_announce="【$world_check_flag】Failed to send server broadcast message或者Failed to send server listings,网络有点问题，且当前服务器没人，服务器需要重启,给您带来的不便还请谅解！！！"
+			restart_server "$cluster_name"
 		fi
-	else
-		echo "当前存档没有地上的内容！"
-		Main
 	fi
-
 }
-
-# 获取最新版脚本
-function get_mew_version() {
-	if [ -d "$HOME/clone_tamp" ]; then
-		rm -rf "$HOME/clone_tamp"
-	fi
-	clear
-	echo "下载时间超过10s,就是网络问题,请CTRL+C强制退出,再次尝试,实在不行手动下载最新的。"
-	mkdir "$HOME/clone_tamp"
-	cd "$HOME/clone_tamp" || exit
-
-	echo "是否使用git加速链接下载?"
-	echo "请输入 Y/y 同意 或者 N/n 拒绝并使用官方链接,推荐使用加速链接,失效了再用原版链接"
-	read -r use_acceleration
-	if [ "${use_acceleration}" == "Y" ] || [ "${use_acceleration}" == "y" ]; then
-		git clone "${use_acceleration_url}"
-	elif [ "${use_acceleration}" == "N" ] || [ "${use_acceleration}" == "n" ]; then
-		git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
-	else
-		echo "输入有误,请重新输入"
-		get_mew_version
-	fi
-	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh"
-	cd "$HOME" || exit
-	clear
-	./DST_SCRIPT.sh
+# 查看游戏服务器状态
+check_server() {
+	echo " "
+	printf '=%.0s' {1..60}
+	echo " "
+	echo " "
+	screen -ls
+	echo " "
+	printf '=%.0s' {1..23}
+	echo -e "输入要切换的PID\c"
+	printf '=%.0s' {1..23}
+	echo ""
+	echo ""
+	echo "PS:回车后会进入地上或地下的运行界面"
+	echo "   手动输入c_shutdown(true)回车保存退出"
+	echo "   进入后不想关闭请按ctrl+a+d"
+	read -r pid1
+	screen -r "$pid1"
 }
 
 # 自动更新
-function auto_update() {
-	get_modoverrides_path
-	get_server_log_path
-	Cluster_bath="${DST_save_path}"/"$cluster_name"
-	ugc_mods_path="${DST_game_path}/ugc_mods"
-	dontstarve_dedicated_server_nullrenderer_path="${DST_game_path}/bin"
-	masterlog_path="${DST_save_path}/$cluster_name/Master/server_log.txt"
-	caveslog_path="${DST_save_path}/$cluster_name/Caves/server_log.txt"
-	master_saves_path="${DST_save_path}/$cluster_name/Master"
-	caves_saves_path="${DST_save_path}/$cluster_name/Caves"
-	DST_game_version=$(cat "$DST_save_path/$cluster_name/gameversion.txt")
+auto_update() {
+	cluster_name=$1
+	init "$cluster_name"
 	cd "$HOME" || exit
-	cd "${Cluster_bath}" || exit
+	cd "${cluster_path}" || exit
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
-	##配置常量
-	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-	flag=$flag
-	# 游戏版本
-	DST_game_version=\"$DST_game_version\"
-	#查看进程执行情况
-	function CheckProcess()
-	{
-		if [  -d \"$master_saves_path\" ];then
-			if [[ \$(screen -ls | grep -c \"$process_name_master\") -ne 1 ]]; then
-				echo \"检测到地上服务器未开启或已关闭，正在重新开启中。。。\"
-				start_server_master
-			fi
-			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				GetPlayerList
-				if [ \"\$have_player_master\" == false ];then
-					c_announce=\"【地上】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-					shutdown_master
-					start_server_master
-				fi
-			fi
-			if [[ \$(grep \"Failed to send server listings\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				GetPlayerList
-				if [ \"\$have_player_master\" == false ];then
-					c_announce=\"【地上】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-					shutdown_master
-					start_server_master
-				fi
-			fi
-		fi
-		if [ -d \"$caves_saves_path\" ];then
-			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -ne 1 ]]; then
-				echo \"检测到地下服务器未开启或已关闭，正在重新开启中。。。\"
-				start_server_caves
-			fi
-			if [[ \$(grep \"Failed to send server broadcast message\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				GetPlayerList
-				if [ \"\$have_player_caves\" == false ];then
-					c_announce=\"【地下】Failed to send server broadcast message,服务器需要重启,给您带来的不便还请谅解！！！\"
-					shutdown_caves
-					start_server_caves
-				fi
-			fi
-			if [[ \$(grep \"Failed to send server listings\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				GetPlayerList
-				if [ \"\$have_player_caves\" == false ];then
-					c_announce=\"【地下】Failed to send server listings,服务器需要重启,给您带来的不便还请谅解！！！\"
-					shutdown_caves
-					start_server_caves
-				fi
-			fi
-		fi
+	# 当前脚本所在位置及名称
+	script_path_name=\"$script_path/$script_name\"
+	# 使用脚本的方法
+	script(){
+		bash \$script_path_name \"\$1\" $cluster_name
 	}
-	# 获取玩家列表
-	function GetPlayerList()
-	{	
-		txt=\"-----------------------------------------------------\"
-		if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 ]]; then
-			allplayerslist=\$( date +%s%3N )
-			screen -r \"$process_name_master\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end end \$(printf \\\\r)\" 
-			sleep 1
-			list=\$( grep --text \"$server_log_path_master\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 )
-			nowtime=\$( date +'%Y-%m-%d %H:%M:%S')
-			{
-			echo  \"\$txt\"
-			echo  \"\$nowtime\"
-			echo  \"\$list\" 
-			} >> \"${DST_save_path}\"/\"$cluster_name\"/playerlist.txt
-			if [[ \"\$list\" != \"\" ]]; then
-				have_player_master=true
-			else
-				have_player_master=false
-			fi
-		elif [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
-			allplayerslist=\$( date +%s%3N )
-			screen -r \"$server_log_path_caves\" -p 0 -X stuff \"for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\\\"playerlist %s [%d] %s %s %s\\\", \$allplayerslist, i-1, v.userid, v.name, v.prefab )) end end \$(printf \\\\r)\" 
-			sleep 1
-			list=\$( grep --text \"$server_log_path_caves\" -e \"playerlist \$allplayerslist\" | cut -d ' ' -f 4-15 )
-			nowtime=\$( date +'%Y-%m-%d %H:%M:%S')
-			{
-			echo  \"\$txt\"
-			echo  \"\$nowtime\"
-			echo  \"\$list\" 
-			} >> \"${DST_save_path}\"/\"$cluster_name\"/playerlist.txt
-			if [[ \"\$list\" != \"\" ]]; then
-				have_player_caves=true
-			else
-				have_player_caves=false
-			fi
-		fi
-	}
-	#查看游戏更新情况
-	function CheckUpdate()
-	{
-		cd $HOME/steamcmd || exit
-		# 判断一下对应开启的版本
-		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-			# 获取最新buildid		
-			./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/\"branches\"/,/^}/!d' | sed -n \"\/\\\"updatebeta\\\"\/,\/}\/p\" | grep -m 1 buildid  > \"$HOME/dst_beta/buildid_beta.txt\"
-			#查看buildid是否一致
-			if [[ \$( sed 's/[^0-9\]//g' \"\$HOME/dst_beta/buildid_beta.txt\" ) -gt \$( grep -m 1 buildid  $HOME/dst_beta/steamapps/appmanifest_343050.acf | sed 's/[^0-9\]//g') ]]; then
-				echo " "
-				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
-				echo " "
-				CheckUpdateProces
-			else
-				if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
-					echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新!\e[0m\"	
-					restart_server
-					UpdateServer_flag=0
-				fi
-				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新!\e[0m\"	
-			fi
-		else
-			# 获取最新buildid
-			./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/\"branches\"/,/^}/!d' | sed -n \"/\\\"public\\\"/,/}/p\" | grep -m 1 buildid | sed 's/[^0-9\]//g'   > \"\$HOME/dst/buildid.txt\"
-			#查看buildid是否一致
-			if [[ \$(sed 's/[^0-9\]//g' \"\$HOME/dst/buildid.txt\" ) -gt \$(  grep -m 1 buildid $HOME/dst/steamapps/appmanifest_343050.acf | sed 's/[^0-9\]//g') ]]; then
-				echo " "
-				echo -e \"\e[31m\${DST_now}: 游戏服务端有更新! \e[0m\"	
-				echo " "
-				CheckUpdateProces
-			else
-				if [[ \"\${UpdateServer_flag}\" == \"1\" ]]; then
-					echo " "
-					echo -e \"\e[92m\${DST_now}: 游戏服务端已更新,正在进行更新! \e[0m\"	
-					echo " "
-					restart_server
-					UpdateServer_flag=0
-				fi
-				echo " "
-				echo -e \"\e[92m\${DST_now}: 游戏服务端没有更新! \e[0m\"	
-				echo " "
-			fi
-		fi
-	}
-	#查看游戏更新进程情况
-	function CheckUpdateProces()
-	{
-		if [[ \$(screen -ls | grep -c \"AutoUpdate\") -gt 0  ]]; then
-			for i in \$(screen -ls | grep \"AutoUpdate\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-			do
-				is_UpdateProces=\"\$i\"
-				break
-			done
-		fi
-		if [[ \$(screen -ls | grep \"$process_name_AutoUpdate\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')  -eq \$is_UpdateProces ]]; then
-			c_announce=\"检测到游戏服务端有更新,服务器需要重启,给您带来的不便还请谅解！！！\"
-			UpdateServer
-		else 
-			echo " "
-			echo -e \"\e[31m \${DST_now}: 游戏服务端需要更新,正在等待更新! \e[0m\"	
-			echo " "
-			UpdateServer_flag=1
-		fi
-	}
-	#查看游戏mod更新情况
-	function CheckModUpdate()
-	{
-		echo " "
-		echo -e \"\e[92m\${DST_now}: 同步服务端更新进程正在运行。。。\e[0m\"
-		cd $dontstarve_dedicated_server_nullrenderer_path || exit
-		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ] || [ \"\$flag\" == 2 ]; then
-			# NeedsUpdate=\$(awk '/NeedsUpdate/{print \$2}' \"${ugc_mods_path}\"/\"$cluster_name\"/Master/appworkshop_322330.acf | sed 's/\"//g')
-			./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\"  -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
-			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${masterlog_path}\") -gt  0 ]]; then
-				DST_has_mods_update=true
-			fi
-		elif [ \"\$flag\" == 4 ]; then
-			./dontstarve_dedicated_server_nullrenderer -cluster \"$cluster_name\" -shard Caves -only_update_server_mods  -ugc_directory \"$ugc_mods_path/$cluster_name\"  > $cluster_name.txt 
-			if [[ \$(grep \"is out of date and needs to be updated for new users to be able to join the server\" -c \"${caveslog_path}\") -gt  0 ]]; then
-				DST_has_mods_update=true
-			fi
-		else
-			DST_has_mods_update=false
-		fi
-		if [[ \$(grep \"DownloadPublishedFile\" -c \"${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt\") -gt  0 ]]; then
-			DST_has_mods_update=true
-		else
-			DST_has_mods_update=false
-		fi
-		if [  \${DST_has_mods_update} == true ]; then
-			echo " "
-			echo -e \"\e[31m \${DST_now}: Mod 有更新！ \e[0m\"
-			echo " "
-			c_announce=\"检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！\"
-			restart_server
-		elif [  \${DST_has_mods_update} == false ]; then
-			echo " "
-			echo -e \"\e[92m \${DST_now}: Mod 没有更新! \e[0m\"
-			echo " "
-		fi
-	}
-	# 重启服务器
-	function restart_server()
-	{
-		Shutdown
-		start_server
-		check
-	}
-	# 更新服务器
-	function UpdateServer()
-	{
-		Shutdown
-		cd $HOME/steamcmd || exit
-		if [[ \"\${DST_game_version}\" == \"测试版32位\" || \"\${DST_game_version}\" == \"测试版64位\" ]]; then
-			echo \"正在同步测试版游戏服务端。\"
-			 ./steamcmd.sh +force_install_dir \"$HOME/dst_beta\" +login anonymous +app_update 343050 -beta $beta_token validate  +quit
-		else
-			echo \"正在同步正式版游戏服务端。\"
-			./steamcmd.sh +force_install_dir \"$HOME/dst\" +login anonymous +app_update 343050 validate +quit 
-		fi
-		start_server
-	}
-	# 关闭服务器
-	function Shutdown()
-	{
-		# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-		if [ \"\$flag\" == 1 ]; then
-			shutdown_master
-			shutdown_caves
-		elif [ \"\$flag\" == 2 ]; then
-			shutdown_master
-		elif [ \"\$flag\" == 4 ]; then
-			shutdown_caves
-		fi
-	}
-	# 关闭地上服务器
-	function shutdown_master()
-	{
-		for i in \$(screen -ls | grep -w \"$process_name_master\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-		do
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
-			sleep 1
-		done
-		while :
-		do
-			sleep 1
-			if [[ \$(screen -ls | grep -c \"$process_name_master\") -gt 0 ]]; then
-				echo -e \"$cluster_name地上服务器正在关闭,请稍后。。。\"
-			else
-				echo -e \"$cluster_name地上服务器已关闭!!!\"
-				break
-			fi
-		done
-	}
-	# 关闭地下服务器
-	function shutdown_caves()
-	{
-		for i in \$(screen -ls | grep -w \"$process_name_caves\" | awk '/[0-9]{1,}\./ {print strtonum(\$1)}')
-		do
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_announce(\\\"\$c_announce\\\") \$(printf \\\\r)\"
-			sleep 2
-			screen -S \"\$i\" -p 0 -X stuff \"c_shutdown(true) \$(printf \\\\r)\"
-			sleep 1
-		done
-		while :
-		do
-			sleep 1
-			if [[ \$(screen -ls | grep -c \"$process_name_caves\") -gt 0 ]]; then
-				echo -e \"$cluster_name地下服务器正在关闭,请稍后。。。\"
-			else
-				echo -e \"$cluster_name地下服务器已关闭!!!\"
-				break
-			fi
-		done
-	}
-	# 开启服务器
-	function start_server()
-	{
-		Addmod
-		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-		if [ \$flag == 1 ];then
-			start_server_master
-			start_server_caves
-		elif [ \$flag == 2 ];then
-			start_server_master
-		elif [ \$flag == 4 ];then
-			start_server_caves
-		fi
-	}
-	# 开启地上服务器
-	function start_server_master()
-	{
-		screen -dmS  \"$process_name_master\" /bin/sh -c \"${DST_save_path}/$cluster_name/startmaster.sh\" 
-		
-	}
-
-	function check(){
-		if [ \"\$(screen -ls | grep -c \"$process_name_master\")\" -gt 0 ];then
-			while :
-			do
-				sleep 1
-				echo -en \"\\r地上服务器开启中,请稍后.  \"
-				sleep 1
-				echo -en \"\\r地上服务器开启中,请稍后.. \"
-				sleep 1
-				echo -en \"\\r地上服务器开启中,请稍后...\"
-				if [[ \$(grep \"Sim paused\" -c \"$masterlog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$masterlog_path\") -gt 0 ]];then
-						echo -e \"\\n\\e[92m地上服务器开启成功!!!                \\e[0m\"
-						break
-				fi
-				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$masterlog_path\") -gt 0  ]]; then
-					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
-					shutdown_master
-					start_server_master
-				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$masterlog_path\") -gt 0  ]]; then
-					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
-					shutdown_master
-					start_server_master
-				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$masterlog_path\") -gt 0 ]]; then
-					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
-					sleep 3
-					shutdown_master
-					start_server_master
-				fi
-			done
-		fi
-		if [ \"\$(screen -ls | grep -c \"$process_name_caves\")\" -gt 0 ];then
-			while :
-			do
-				sleep 1
-				echo -en \"\\r地下服务器开启中,请稍后.  \"
-				sleep 1
-				echo -en \"\\r地下服务器开启中,请稍后.. \"
-				sleep 1
-				echo -en \"\\r地下服务器开启中,请稍后...\"
-				if [[ \$(grep \"Sim paused\" -c \"$caveslog_path\") -gt 0 ||  \$(grep \"shard LUA is now ready!\" -c \"$caveslog_path\") -gt 0 ]];then
-						echo -e \"\\n\\e[92m地下服务器开启成功!!!                \\e[0m\"
-						break
-				fi
-				if  [[ \$(grep \"Your Server Will Not Start !!!\" -c \"$caveslog_path\") -gt 0  ]]; then
-					echo \"服务器开启未成功,请注意令牌是否成功设置且有效。\"
-					shutdown_caves
-					break
-				elif  [[ \$(grep \"Unhandled exception during server startup: RakNet UDP startup failed: SOCKET_PORT_ALREADY_IN_USE\" -c \"$caveslog_path\") -gt 0  ]]; then
-					echo \"地上服务器开启未成功,端口冲突啦，改下端口吧！\"
-					shutdown_caves
-					break
-				elif [[ \$(grep \"Failed to send shard broadcast message\" -c \"$caveslog_path\") -gt 0 ]]; then
-					echo \"服务器开启未成功,可能网络有点问题,正在自动重启。\"
-					sleep 3
-					shutdown_caves
-					start_server_caves
-				fi
-			done
-		fi
-	}
-
-	# 开启地下服务器
-	function start_server_caves()
-	{
-		screen -dmS  \"$process_name_caves\" /bin/sh -c \"${DST_save_path}/$cluster_name/startcaves.sh\"
-	}
-
-	#自动添加存档所需的mod
-	function Addmod()
-	{
-		echo \"正在将开启存档所需的mod添加进服务器配置文件中。。。\"
-		cd \"${DST_game_path}\"/mods || exit
-		rm -rf dedicated_server_mods_setup.lua
-		sleep 0.1
-		grep \"\\\"workshop\" < \"$modoverrides_path\" | cut -d '\"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line
-		do
-			echo \"ServerModSetup(\"\"\$line\"\")\">>$dedicated_server_mods_setup_path
-			echo \"ServerModCollectionSetup(\"\"\$line\"\")\">>$dedicated_server_mods_setup_path
-			sleep 0.5
-			echo \"\$line Mod添加完成\"
-		done
-	}
-	
 	# 获取天数信息
-	function get_daysInfo()
+	get_daysInfo()
 	{
 		datatime=\$(date +%s%3N)
-		screen -r \"$process_name\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime cycles\\\")\$(printf \\\r)\"
+		screen -r \"$process_name_main\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime cycles\\\")\$(printf \\\r)\"
 		sleep 1
-		presentday=\$(grep --text \"$get_server_log_path\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
+		presentday=\$(grep --text \"$server_log_path_main\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
 	}
 
 	timecheck=0
 	# 保持运行
 	while :
 			do
-				DST_now=\$(date +%Y年%m月%d日%H:%M)
-				CheckProcess
-				get_daysInfo
-				daysInfo=\$presentday
+				script -checkprocess
+				script -get_playerList
+				get_daysInfo		
+				echo \"当前服务器天数:\$presentday\"		
 				timecheck=\$(( timecheck%750 ))
-				GetPlayerList
 				# 自动备份
 				if [ \"\$timecheck\" == 0 ];then
 					if [  -d \"$master_saves_path\" ];then
@@ -965,7 +759,7 @@ function auto_update() {
 							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$master_saves_path\"|| exit
-						zip -r saves_bak/\"master_\${daysInfo}days\".zip save/
+						zip -r saves_bak/\"master_\${presentday}days\".zip save/
 					fi
 					if [ -d \"$caves_saves_path\" ];then
 						cd \"$caves_saves_path\" || exit			
@@ -978,178 +772,201 @@ function auto_update() {
 							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 						fi
 						cd \"$caves_saves_path\" || exit
-						zip -r saves_bak/\"caves_\${daysInfo}days\".zip save/
+						zip -r saves_bak/\"caves_\${presentday}days\".zip save/
 					fi
-					cd 	\"$DST_save_path/$cluster_name\" || exit
-					if [ ! -d \"$DST_save_path/$cluster_name/Player\" ];then
+					cd 	\"$script_files_path\" || exit
+					if [ ! -d \"$script_files_path/Player\" ];then
 						mkdir Player
 					fi
-					zip -r Player/\"playerlist_\${daysInfo}days\".zip \"playerlist.txt\"
-					rm  playerlist.txt
+					zip -r $script_files_path/Player/\"playerlist_\${presentday}days\".zip \"playerlist.txt\"
+					echo \"\" > playerlist.txt
 					ZipNum_Player=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
 					if [ \"\$ZipNum_Player\" -gt 21 ];then
 						find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
 					fi
 				fi
 				((timecheck++))
-				CheckUpdate
-				CheckModUpdate
-				sleep 30
+				script -checkupdate
+				script -checkmodupdate
+				sleep 10
 			done
-	" >"${Cluster_bath}"/auto_update.sh
-	chmod 777 "${Cluster_bath}"/auto_update.sh
-	screen -dmS "$process_name_AutoUpdate" /bin/sh -c "${DST_save_path}/$cluster_name/auto_update.sh"
+	" >"$script_files_path"/auto_update.sh
+	chmod 777 "$script_files_path"/auto_update.sh 
+	screen -dmS "$process_name_AutoUpdate" /bin/sh -c "$script_files_path/auto_update.sh"
 	echo -e "\e[92m自动更新进程 $process_name_AutoUpdate 已启动\e[0m"
+	sleep 1
 }
 
-# mod配置文件的路径
-function get_modoverrides_path() {
-	dedicated_server_mods_setup_path="${DST_game_path}"/mods/dedicated_server_mods_setup.lua
-	if [ -e "${DST_save_path}/$cluster_name/Master/modoverrides.lua" ]; then
-		modoverrides_path=${DST_save_path}/$cluster_name/Master/modoverrides.lua
-	elif [ -e "${DST_save_path}/$cluster_name/Caves/modoverrides.lua" ]; then
-		modoverrides_path=${DST_save_path}/$cluster_name/Caves/modoverrides.lua
+# 列出所有的mod
+list_all_mod() {
+	tput setaf 2
+	clear
+	show=true
+	if [ -d "$mods_path_master" ]; then
+		mods_path=$mods_path_master
+	elif [ -d "$mods_path_caves" ]; then
+		mods_path=$mods_path_caves
+	else
+		show=false
+		printf '=%.0s' {1..60}
+		echo ""
+		echo ""
+		echo "当前存档没有配置或者下载mod"
+		echo ""
+		printf '=%.0s' {1..60}
+	fi
+	if [ $show == "true" ]; then
+		echo "                                                                                  "
+		echo "                                                                                  "
+		printf '=%.0s' {1..27}
+		echo -e " $cluster_name存档已下载的mod如下: \c"
+		printf '=%.0s' {1..27}
+		echo " "
+		echo ""
+	fi
+	if [ "$mods_path" != "" ]; then
+		for i in $(find "$mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
+			if [[ -f "$mods_path/$i/modinfo.lua" ]]; then
+				name=$(grep "$mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
+				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
+			fi
+		done
+		echo ""
+		printf '=%.0s' {1..80}
 	fi
 }
-
-#自动添加存档所需的mod
-function addmod() {
-	echo "正在将开启存档所需的mod添加进服务器配置文件中。。。"
-	cd "${DST_game_path}"/mods || exit
-	rm -rf dedicated_server_mods_setup.lua
-	sleep 0.1
-	echo "" >>dedicated_server_mods_setup.lua
-	sleep 0.1
-	get_modoverrides_path
-	grep "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
-		echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup_path"
-		echo "ServerModCollectionSetup(\"$line\")" >>"$dedicated_server_mods_setup_path"
-		sleep 0.05
-		echo -e "\e[92m$line Mod添加完成\e[0m"
-	done
+# 获取天数信息
+get_daysInfo() {
+	cluster_name=$1
+	init "$cluster_name"
+	datatime=$(date +%s%3N)
+	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
+	sleep 1
+	presentday=$(grep --text "$server_log_path_main" -e "$datatime" | cut -d " " -f2 | tail -n +2)
 }
-
 # 存档进程
-function get_process_name() {
-	if [[ $DST_game_version == "正式版32位" || $DST_game_version == "正式版64位" ]]; then
-		process_name_AutoUpdate="DST $cluster_name AutoUpdate"
-		process_name_caves="无"
-		process_name_master="无"
-		process_name="无"
-		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
+get_process_name() {
+	cluster_name=$1
+	process_name_caves="无"
+	process_name_master="无"
+	process_name_AutoUpdate="AutoUpdate $cluster_name"
+	process_name_main="无"
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
 			process_name_caves="DST_Caves $cluster_name"
-			process_name="DST_Caves $cluster_name"
-		fi
-		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
-			process_name_master="DST_Master $cluster_name"
-			process_name="DST_Master $cluster_name"
-		fi
-
-	elif [[ $DST_game_version == "测试版32位" || $DST_game_version == "测试版64位" ]]; then
-		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
-		process_name_caves="无"
-		process_name_master="无"
-		process_name="无"
-		process_name_AutoUpdate="DST $cluster_name AutoUpdate_beta"
-		if [ -d "${DST_save_path}/$cluster_name/Caves" ]; then
+			process_name_main="DST_Caves $cluster_name"
+		else
 			process_name_caves="DST_Caves_beta $cluster_name"
-			process_name="DST_Caves_beta $cluster_name"
+			process_name_main="DST_Caves_beta $cluster_name"
 		fi
-		if [ -d "${DST_save_path}/$cluster_name/Master" ]; then
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
+			process_name_master="DST_Master $cluster_name"
+			process_name_main="DST_Master $cluster_name"
+		else
 			process_name_master="DST_Master_beta $cluster_name"
-			process_name="DST_Master_beta $cluster_name"
+			process_name_main="DST_Master_beta $cluster_name"
 		fi
 	fi
 }
 
 # 存档
-function get_cluster_name() {
-	if [ ! -d "${DST_save_path}" ]; then
+get_cluster_name() {
+	if [ ! -d "${DST_SAVE_PATH}" ]; then
 		mkdir "$HOME"/.klei
 		cd "$HOME"/.klei || exit
-		mkdir "${DST_save_path}"
+		mkdir "${DST_SAVE_PATH}"
 	fi
 	printf '=%.0s' {1..26}
 	echo -e "存档目录\c"
 	printf '=%.0s' {1..26}
 	echo ""
 	echo ""
-	cd "${DST_save_path}" || exit
+	cd "${DST_SAVE_PATH}" || exit
 	ls
 	cd "$HOME" || exit
 	echo ""
 	printf '=%.0s' {1..60}
-	# printf  '=%.0s' {1..12}
-	# echo -e "存档名不要是Cluster_1,否则会找不到哦\c"
-	# printf  '=%.0s' {1..12}
 	echo ""
 	echo "请输入存档代码:"
 	read -r cluster_name
-}
-
-# 游戏版本
-function get_dontstarve_dedicated_server_nullrenderer() {
-	if [ ! -f "$DST_save_path/$cluster_name/gameversion.txt" ]; then
-		echo "正式版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
-	fi
-	if [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "正式版32位" ]]; then
-		gamesPath="$HOME/dst/bin"
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "正式版64位" ]]; then
-		gamesPath="$HOME/dst/bin64"
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
-	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "测试版32位" ]]; then
-		gamesPath="$HOME/dst_beta/bin"
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	elif [[ $(cat "$DST_save_path/$cluster_name/gameversion.txt") == "测试版64位" ]]; then
-		gamesPath="$HOME/dst_beta/bin64"
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
+	if [ "$cluster_name" == "" ]; then
+		echo "存档名输入有误！"
+		main
+	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+		echo "存档不存在！"
+		main
+	else
+		init "$cluster_name"
 	fi
 }
 
-#开启地下服务器
-function StartCaves() {
-	get_dontstarve_dedicated_server_nullrenderer
-	rm -rf "${DST_save_path}"/"$cluster_name"/startcaves.sh
-	echo "#!/bin/bash
-	gamesPath=\"$gamesPath\"
-	cd "\"\$gamesPath\" \|\| exit"
-	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
-	run_shared+=(-console)
-	run_shared+=(-cluster $cluster_name)
-	run_shared+=(-monitor_parent_process $)
-	\"\${run_shared[@]}\" -shard Caves" >"${DST_save_path}"/"$cluster_name"/startcaves.sh
-	cd "${DST_save_path}"/"$cluster_name" || exit
-	chmod u+x ./startcaves.sh
-	cd "$HOME" || exit
-	screen -dmS "$process_name_caves" /bin/sh -c "${DST_save_path}/$cluster_name/startcaves.sh"
+# 存档进程名
+get_cluster_name_processing() {
+	printf '=%.0s' {1..12}
+	echo -e "请确保要关闭的存档版本和当前脚本版本一致(不区分位数)\c"
+	printf '=%.0s' {1..12}
+	echo ""
+	screen -ls
+	printf '=%.0s' {1..28}
+	echo -e "请输入要关闭的存档名\c"
+	printf '=%.0s' {1..28}
+	echo ""
+	read -r cluster_name
+	if [ "$cluster_name" == "" ]; then
+		echo "存档名输入有误！"
+		main
+	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+		echo "存档不存在！"
+		main
+	else
+		init "$cluster_name"
+	fi
 }
 
-#开启地面服务器
-function StartMaster() {
-	get_dontstarve_dedicated_server_nullrenderer
-	rm -rf "${DST_save_path}"/"$cluster_name"/startmaster.sh
-	echo "#!/bin/bash
-	gamesPath=\"$gamesPath\"
-	cd "\"\$gamesPath\" \|\| exit"
-	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
-	run_shared+=(-console)
-	run_shared+=(-cluster $cluster_name)
-	run_shared+=(-monitor_parent_process $)
-	\"\${run_shared[@]}\" -shard Master " >"${DST_save_path}"/"$cluster_name"/startmaster.sh
-	cd "${DST_save_path}"/"$cluster_name" || exit
-	chmod u+x ./startmaster.sh
-	cd "$HOME" || exit
-	screen -dmS "$process_name_master" /bin/sh -c "${DST_save_path}/$cluster_name/startmaster.sh"
+# 获取玩家列表
+get_playerList() {
+	cluster_name=$1
+	init "$cluster_name"
+	if [[ $(screen -ls | grep -c "$process_name_main") -gt 0 ]]; then
+		allplayerslist=$(date +%s%3N)
+		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
+		sleep 1
+		list=$(grep --text "$server_log_path_main" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15)
+		nowtime=$(date +'%Y-%m-%d %H:%M:%S')
+		txt="-----------------------------------------------------"
+		if [[ "$list" != "" ]]; then
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "$list"
+			echo -e "\e[92m================================================================================\e[0m"
+			have_player=true
+			# 保存玩家信息
+			{
+				echo "$txt"
+				echo "$nowtime"
+				echo "$list"
+			} >> "$script_files_path"/playerlist.txt
+			return 1
+		else
+			echo -e "\e[92m服务器玩家列表:\e[0m"
+			echo -e "\e[92m================================================================================\e[0m"
+			echo "                                 当前服务器没有玩家"
+			echo -e "\e[92m================================================================================\e[0m"
+			have_player=false
+			return 0
+		fi
+	fi
 }
 
 # 服务器信息
-function serverinfo() {
+serverinfo() {
 
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
 	getworldstate
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
-	GetPlayerList
+	get_playerList
 	getmonster
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
@@ -1165,59 +982,8 @@ function serverinfo() {
 	echo -e "\e[33m================================================================================\e[0m"
 }
 
-# 获取玩家列表
-function GetPlayerList() {
-	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
-		allplayerslist=$(date +%s%3N)
-		screen -r "$process_name_master" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)" 
-		sleep 1
-		list=$(grep --text "$server_log_path_master" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 )
-		nowtime=$( date +'%Y-%m-%d %H:%M:%S')
-		txt="-----------------------------------------------------"
-		{
-		echo  "$txt"
-		echo  "$nowtime"
-		echo  "$list" 
-		} >> "${DST_save_path}"/"$cluster_name"/playerlist.txt
-		if [[ "$list" != "" ]]; then
-			echo -e "\e[92m服务器玩家列表:\e[0m"
-			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list"
-			echo -e "\e[92m================================================================================\e[0m"
-		else
-			echo -e "\e[92m服务器玩家列表:\e[0m"
-			echo -e "\e[92m================================================================================\e[0m"
-			echo "                                 当前服务器没有玩家"
-			echo -e "\e[92m================================================================================\e[0m"
-		fi
-	elif [[ $(screen -ls | grep -c "$process_name_caves") -gt 0 ]]; then
-		allplayerslist=$(date +%s%3N)
-		screen -r "$process_name_caves" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1, v.userid, v.name, v.prefab )) end end $(printf \\r)" 
-		sleep 1
-		list=$(grep "$server_log_path_caves" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15 )
-		nowtime=$( date +'%Y-%m-%d %H:%M:%S')
-		txt="-----------------------------------------------------"
-		{
-		echo  "$txt"
-		echo  "$nowtime"
-		echo  "$list" 
-		} >>"${DST_save_path}"/"$cluster_name"/playerlist.txt
-		if [[ "$list" != "" ]]; then
-			echo -e "\e[92m服务器玩家列表:\e[0m"
-			echo -e "\e[92m================================================================================\e[0m"
-			echo "$list"
-			echo -e "\e[92m================================================================================\e[0m"
-		else
-			echo -e "\e[92m服务器玩家列表:\e[0m"
-			echo -e "\e[92m================================================================================\e[0m"
-			echo "                                 当前服务器没有玩家"
-			echo -e "\e[92m================================================================================\e[0m"
-		fi
-	fi
-}
-
 # 获取怪物信息
-function getmonster() {
+getmonster() {
 	if [[ $(screen -ls | grep -c "$process_name_master") -gt 0 ]]; then
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
@@ -1279,7 +1045,7 @@ function getmonster() {
 }
 
 # 获取世界状态
-function getworldstate() {
+getworldstate() {
 	presentseason=""
 	presentday=""
 	presentcycles=""
@@ -1289,22 +1055,22 @@ function getworldstate() {
 	presentsnow=""
 	presenttemperature=""
 	datatime=$(date +%s%3N)
-	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
-	screen -r "$process_name" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
+	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
 	sleep 1
-	presentseason=$(grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2)
-	presentday=$(grep "$get_server_log_path" -e "$datatime print" | cut -d ' ' -f3 | tail -n +2)
-	presentphase=$(grep "$get_server_log_path" -e "$datatime phase" | cut -d ' ' -f2 | tail -n +2)
-	presentmoonphase=$(grep "$get_server_log_path" -e "$datatime moonphase" | cut -d ' ' -f2 | tail -n +2)
-	presenttemperature=$(grep "$get_server_log_path" -e "$datatime temperature" | cut -d ' ' -f2 | tail -n +2)
-	presentrain=$(grep "$get_server_log_path" -e "$datatime:rain" | cut -d ':' -f6 | tail -n +2)
-	presentsnow=$(grep "$get_server_log_path" -e "$datatime:snow" | cut -d ':' -f6 | tail -n +2 | cut -d ' ' -f2)
-	presentcycles=$(grep "$get_server_log_path" -e "$datatime cycles" | cut -d ' ' -f2 | tail -n +2)
+	presentseason=$(grep "$server_log_path_main" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2)
+	presentday=$(grep "$server_log_path_main" -e "$datatime print" | cut -d ' ' -f3 | tail -n +2)
+	presentphase=$(grep "$server_log_path_main" -e "$datatime phase" | cut -d ' ' -f2 | tail -n +2)
+	presentmoonphase=$(grep "$server_log_path_main" -e "$datatime moonphase" | cut -d ' ' -f2 | tail -n +2)
+	presenttemperature=$(grep "$server_log_path_main" -e "$datatime temperature" | cut -d ' ' -f2 | tail -n +2)
+	presentrain=$(grep "$server_log_path_main" -e "$datatime:rain" | cut -d ':' -f6 | tail -n +2)
+	presentsnow=$(grep "$server_log_path_main" -e "$datatime:snow" | cut -d ':' -f6 | tail -n +2 | cut -d ' ' -f2)
+	presentcycles=$(grep "$server_log_path_main" -e "$datatime cycles" | cut -d ' ' -f2 | tail -n +2)
 
 	if [[ "$presentseason" == "autumn" ]]; then
 		presentseason="秋天"
@@ -1351,65 +1117,8 @@ function getworldstate() {
 	fi
 }
 
-# 查看游戏服务器状态
-function check_server() {
-	echo " "
-	printf '=%.0s' {1..60}
-	echo " "
-	echo " "
-	screen -ls
-	echo " "
-	printf '=%.0s' {1..23}
-	echo -e "输入要切换的PID\c"
-	printf '=%.0s' {1..23}
-	echo ""
-	echo ""
-	echo "PS:回车后会进入地上或地下的运行界面"
-	echo "   手动输入c_shutdown(true)回车保存退出"
-	echo "   进入后不想关闭请按ctrl+a+d"
-	read -r pid1
-	screen -r "$pid1"
-}
-
-# 列出所有的mod
-function list_all_mod() {
-	tput setaf 2
-	clear
-	get_cluster_name
-	echo "                                                                                  "
-	echo "                                                                                  "
-	printf '=%.0s' {1..27}
-	echo -e " $cluster_name存档已下载的mod如下: \c"
-	printf '=%.0s' {1..27}
-	echo ""
-	if [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Master/content/322330" ]; then
-		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Master/content/322330
-		for i in $(find "$temp_mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
-			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
-				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
-				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
-			fi
-		done
-		echo ""
-		printf '=%.0s' {1..80}
-	elif [ -d """$DST_game_path""/ugc_mods/""$cluster_name""/Caves/content/322330" ]; then
-		temp_mods_path="$DST_game_path"/ugc_mods/"$cluster_name"/Caves/content/322330
-		for i in $(find "$temp_mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
-			if [[ -f "$temp_mods_path/$i/modinfo.lua" ]]; then
-				name=$(grep "$temp_mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
-				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
-			fi
-		done
-		echo ""
-		printf '=%.0s' {1..80}
-	else
-		echo "当前存档没有配置或者下载mod"
-	fi
-
-}
-
 # 准备环境
-function PreLibrary() {
+PreLibrary() {
 	if [ "$os" == "Ubuntu" ]; then
 		echo ""
 		echo "##########################"
@@ -1426,10 +1135,9 @@ function PreLibrary() {
 		sudo apt-get -y install libcurl4-gnutls-dev:i386
 		sudo dpkg --add-architecture i386
 
-		
 		sudo apt-get -y install lib64gcc1
 		sudo apt-get -y install lib32gcc1
-		
+
 		sudo apt-get -y install libcurl4-gnutls-dev
 
 		#一些必备工具
@@ -1487,48 +1195,50 @@ function PreLibrary() {
 		sudo pacman -S --noconfirm wget screen
 		sudo pacman -S --noconfirm lib32-gcc-libs libcurl-gnutls
 	else
-		echo "该系统未被本脚本支持！"
+		echo -e "\e[1;31m 该系统未被本脚本支持！ \e[0m"
 	fi
 }
 
 #前期准备
-function prepare() {
+prepare() {
 	cd "$HOME" || exit
-	if [ ! -d "./steamcmd" ] || [ ! -d "./dst" ] || [ ! -d "./dst_beta" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
+	if [ -d "./dst" ]; then
+		echo "新脚本的目录结构已更改，需要重新下载游戏本体，请稍后。。。"
+		mv dst/ DST/
+	fi
+	if [ -d "./dst_beta" ]; then
+		mv dst_beta/ DST_BETA/
+	fi
+	if [ ! -d "./steamcmd" ] || [ ! -d "./DST" ] || [ ! -d "./DST_BETA" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
 		PreLibrary
-		mkdir "$HOME/dst"
-		mkdir "$HOME/dst_beta"
-
+		mkdir "$DST_DEFAULT_PATH"
+		mkdir "$DST_DEFAULT_PATH_BETA"
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
-		mkdir "${DST_save_path}"
+		mkdir "${DST_SAVE_PATH}"
 		cd "$HOME/steamcmd" || exit
 		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
 		tar -xvzf steamcmd_linux.tar.gz
 		sleep 1
 		rm -f steamcmd_linux.tar.gz
 	fi
-	if [[ ${DST_game_version} == "正式版32位" || ${DST_game_version} == "正式版64位" ]]; then
-		cd "$HOME/dst" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
-		fi
-	else
-		cd "$HOME/dst_beta" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
-		fi
+	# 下载游戏本体
+	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
+		echo "正在下载饥荒游戏本体！！！"
+		cd "$HOME/steamcmd" || exit
+		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	fi
-	cd "$HOME" || exit
-	Main
+	if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
+		echo "正在下载饥荒测试版游戏本体！！！"
+		cd "$HOME/steamcmd" || exit
+		./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+	fi
 }
 
 # 切换游戏版本
-function change_game_version() {
-
+change_game_version() {
+	cluster_name=$1
 	echo "###########################"
 	echo "##### 请选择游戏版本: #####"
 	echo "#      1.正式版32位       #"
@@ -1537,59 +1247,133 @@ function change_game_version() {
 	echo "#      4.测试版64位       #"
 	echo "###########################"
 	read -r game_version
-	get_cluster_name
 	if [ "$game_version" == "1" ]; then
-		echo "更改服务端版本为正式版32位!"
-		echo "正式版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
-		cd "$HOME/dst" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
-		fi
+		echo "更改该存档服务端版本为正式版32位!"
+		echo "正式版32位" >"$script_files_path/gameversion.txt"
 	elif [ "$game_version" == "2" ]; then
-		echo "更改服务端版本为正式版64位!"
-		echo "正式版64位" >"$DST_save_path/$cluster_name/gameversion.txt"
-		cd "$HOME/dst" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
-		fi
+		echo "更改该存档服务端版本为正式版64位!"
+		echo "正式版64位" >"$script_files_path/gameversion.txt"
 	elif [ "$game_version" == "3" ]; then
-		echo "更改服务端版本为测试版32位!"
-		echo "测试版32位" >"$DST_save_path/$cluster_name/gameversion.txt"
-		cd "$HOME/dst_beta" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
-		fi
+		echo "更改该存档服务端版本为测试版32位!"
+		echo "测试版32位" >"$script_files_path/gameversion.txt"
 	elif [ "$game_version" == "4" ]; then
-		echo "更改服务端版本为测试版64位!"
-		echo "测试版64位" >"$DST_save_path/$cluster_name/gameversion.txt"
-		cd "$HOME/dst_beta" || exit
-		if [ ! -e "version.txt" ]; then
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
-		fi
+		echo "更改该存档服务端版本为测试版64位!"
+		echo "测试版64位" >"$script_files_path/gameversion.txt"
 	else
 		echo "输入有误,请重新输入"
 		change_game_version
 	fi
-	Main
 }
 
-# 更新游戏
-function update_game() {
-	cd "$HOME/steamcmd" || exit
-	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
-	if [[ ${DST_game_version} == "正式版32位" || ${DST_game_version} == "正式版64位" ]]; then
-		echo "当前服务端版本为${DST_game_version}"
-		./steamcmd.sh +force_install_dir "${DST_game_path}" +login anonymous +app_update 343050 validate +quit
+#确认存档情况
+get_cluster_flag() {
+	cluster_name=$1
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		cluster_flag=4
 	else
-		echo "当前服务端版本为${DST_game_version}"
-		./steamcmd.sh +force_install_dir "$HOME/dst_beta" +login anonymous +app_update 343050 -beta $beta_token validate +quit
+		cluster_flag=7
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		cluster_flag=$((cluster_flag - 3))
+	else
+		cluster_flag=$((cluster_flag - 2))
+	fi
+	return $cluster_flag
+}
+# 日志文件路径
+get_server_log_path() {
+	cluster_name=$1
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
+		server_log_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
+		server_log_path_master="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
 	fi
 }
 
-prepare
-clear
-Main | column -t
+# 备份进行回档
+get_server_save_path_caves() {
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		server_save_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves"
+		cd "$server_save_path_caves"/saves_bak || exit
+		echo "当前存档备份列表"
+		ls
+		echo "请选择需要进行回档的备份名称"
+		read -r saves_name
+		if [ -e "$saves_name" ]; then
+			unzip -o "$saves_name" -d "$server_save_path_caves"
+		else
+			echo "存档名输入有误，请重新输入"
+			get_server_save_path_caves
+		fi
+	else
+		echo "当前存档没有地下的内容！"
+	fi
+}
+
+get_server_save_path_master() {
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		server_save_path_master="${DST_SAVE_PATH}/$cluster_name/Master"
+		cd "$server_save_path_master"/saves_bak || exit
+		echo "当前存档备份列表"
+		ls
+		echo "请选择需要进行回档的备份名称"
+		read -r saves_name
+		if [ -e "$saves_name" ]; then
+			unzip -o "$saves_name" -d "$server_save_path_master"
+		else
+			echo "存档名输入有误，请重新输入"
+			get_server_save_path_master
+		fi
+	else
+		echo "当前存档没有地上的内容！"
+		main
+	fi
+
+}
+
+# 获取最新版脚本
+get_latest_version() {
+	if [ -d "$HOME/clone_tamp" ]; then
+		rm -rf "$HOME/clone_tamp"
+		mkdir "$HOME/clone_tamp"
+	else
+		mkdir "$HOME/clone_tamp"
+	fi
+	clear
+	echo "下载时间超过10s,就是网络问题,请CTRL+C强制退出,再次尝试,实在不行手动下载最新的。"
+	cd "$HOME/clone_tamp" || exit
+	echo "是否使用git加速链接下载?"
+	echo "请输入 Y/y 同意 或者 N/n 拒绝并使用官方链接,推荐使用加速链接,失效了再用原版链接"
+	read -r use_acceleration
+	if [ "${use_acceleration}" == "Y" ] || [ "${use_acceleration}" == "y" ]; then
+		git clone "${use_acceleration_url}"
+	elif [ "${use_acceleration}" == "N" ] || [ "${use_acceleration}" == "n" ]; then
+		git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+	else
+		echo "输入有误,请重新输入"
+		get_latest_version
+	fi
+	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$script_path/""$script_name"""
+	cd "$script_path" || exit
+	rm -rf "$HOME/clone_tamp"
+	clear
+	bash "$script_path"/"$script_name"
+}
+
+# API
+if [ "$1" == "-checkprocess" ]; then
+	checkprocess "$2"
+elif [ "$1" == "-get_playerList" ]; then
+	get_playerList "$2"
+elif [ "$1" == "-checkupdate" ]; then
+	checkupdate "$2"
+elif [ "$1" == "-checkmodupdate" ]; then
+	checkmodupdate "$2"
+elif [ "$1" == "" ] && [ "$2" == "" ]; then
+	prepare
+	clear
+	main
+fi
