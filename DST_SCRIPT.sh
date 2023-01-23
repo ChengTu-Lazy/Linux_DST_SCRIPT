@@ -240,7 +240,8 @@ init() {
 howtostart() {
 	cluster_name=$1
 	addmod "$cluster_name"
-	
+	get_process_name "$cluster_name"
+	get_cluster_flag "$cluster_name"
 	(case $cluster_flag in
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 		1)
@@ -329,12 +330,12 @@ start_server_select() {
 start_server_check() {
 	cluster_name=$1
 	start_time=$(date +%s)
+	get_server_log_path "$cluster_name"
+	init_getByVersion "$cluster_name"
 	if [[ "$(screen -ls | grep --text -c "$process_name_master")" -gt 0 ]]; then
-		check_flag=0
 		start_server_check_select "地上" "$server_log_path_master"
 	fi
 	if [[ "$(screen -ls | grep --text -c "$process_name_caves")" -gt 0 ]]; then
-		check_flag=0
 		start_server_check_select "地下" "$server_log_path_caves"
 	fi
 	end_time=$(date +%s)
@@ -356,8 +357,10 @@ start_server_check() {
 start_server_check_select() {
 	w_flag=$1
 	logpath_flag=$2
+	auto_flag=$3
 	mod_flag=1
 	download_flag=1
+	check_flag=0
 	while :; do
 		if [ "$check_flag" == 0 ] && [ $mod_flag == 0 ]; then
 			echo -en "\r$w_flag服务器开启中,请稍后.                              "
@@ -388,36 +391,35 @@ start_server_check_select() {
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后...                       "
 			sleep 1
 		fi
-
 		if [[ $(grep --text "Sim paused" -c "$logpath_flag") -gt 0 || $(grep --text "shard LUA is now ready!" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 0 ] && [ $download_flag == 0 ] && [ "$check_flag" == 0 ]; then
 			echo -e "\r\e[92m$w_flag服务器开启成功!!!                          \e[0m"
 			sleep 1
 			check_flag=1
-			break
+			return 1
 		fi
 		if [[ $(grep --text "Your Server Will Not Start !!!" -c "$logpath_flag") -gt 0 ]]; then
 			echo -e "\r\e[1;31m$w_flag服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。\e[0m"
-			close_server "$cluster_name"
-			start_server "$cluster_name"
+			close_server "$cluster_name" "$auto_flag"
+			start_server "$cluster_name" "$auto_flag"
 		fi
 		if [[ $(grep --text "PushNetworkDisconnectEvent With Reason: \"ID_DST_INITIALIZATION_FAILED\", reset: false" -c "$logpath_flag") -gt 0 ]]; then
 			echo -e "\r\e[1;31m$w_flag服务器开启未成功,端口冲突啦，改下端口吧,正在关闭服务器，请调整后重新开服！！！            \e[0m"
-			close_server "$cluster_name"
+			close_server "$cluster_name" "$auto_flag"
 			check_flag=0
 			return 0
 		fi
 		if [[ $(grep --text "LAN only servers must use a port in the range of [10998, 11018]" -c "$logpath_flag") -gt 0 ]]; then
 			echo -e "\r\e[1;31m$w_flag服务器开启未成功,端口冲突啦，改下端口吧,本地服务器端口范围是[10998, 11018],正在关闭服务器，请调整后重新开服！！！            \e[0m"
-			close_server "$cluster_name"
+			close_server "$cluster_name" "$auto_flag"
 			check_flag=0
 			return 0
 		fi
 		if [[ $(grep --text "Failed to send shard broadcast message" -c "$logpath_flag") -gt 0 ]]; then
 			sleep 2
 			echo -e "\r\e[1;33m$w_flag服务器开启未成功,可能网络有点问题,正在自动重启。                             \e[0m"
-			close_server "$cluster_name"
-			start_server "$cluster_name"
-		fi
+			close_server "$cluster_name" "$auto_flag"
+			start_server "$cluster_name" "$auto_flag"
+		fi 
 	done
 }
 start_server_check_fix() {
@@ -459,6 +461,11 @@ start_server_check_fix() {
 #自动添加存档所需的mod
 addmod() {
 	cluster_name=$1
+	init_getByVersion "$cluster_name"
+	# 通过存档情况获得主要采用的存档
+	init_get_cluster_main "$cluster_name"
+	# mod所在目录
+	modoverrides_path=$cluster_main/modoverrides.lua
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
 		cd "${gamesPath}"/mods || exit
@@ -490,7 +497,7 @@ update_game() {
 	version_flag=$1
 	cd "$HOME/steamcmd" || exit
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
-	if [[ ${version_flag} == "DEFALUT" ]]; then
+	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
 		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	else
@@ -592,10 +599,11 @@ checkupdate() {
 	# 保存buildid的位置
 	buildid_version_path="$gamesPath/bin/buildid.txt"
 	DST_now=$(date +%Y年%m月%d日%H:%M)
-	cd "$HOME"/steamcmd || exit
+	cd "$HOME"/steamcmd || exit 
 	# 判断一下对应开启的版本
 	# 获取最新buildid
-	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	echo "正在获取最新buildid。。。"
+	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' > "$buildid_version_path"
 	#查看buildid是否一致
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
 		echo " "
@@ -624,13 +632,17 @@ checkmodupdate() {
 	cluster_name=$1
 	DST_now=$(date +%Y年%m月%d日%H:%M)
 	init_getByVersion "$cluster_name"
-	echo " "
+	get_cluster_flag "$cluster_name"
+	# 保存独立存档mod文件的位置
+	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+	get_server_log_path "$cluster_name"
+	echo " " 
 	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新。。。\e[0m"
 	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	if [ "$cluster_flag" == 1 ] || [ "$cluster_flag" == 2 ]; then
 		# NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
-		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Master -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Master -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
 		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_master}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_caves}") -gt 0 ]]; then
 			DST_has_mods_update=true
 		fi
@@ -644,15 +656,16 @@ checkmodupdate() {
 	fi
 	if [[ $(grep --text "DownloadPublishedFile" -c "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt") -gt 0 ]]; then
 		DST_has_mods_update=true
+		echo   "DownloadPublishedFile" 
 	else
 		DST_has_mods_update=false
 	fi
 	if [ ${DST_has_mods_update} == true ]; then
 		echo " "
-		echo -e "\e[31m ${DST_now}:Mod 有更新！ \e[0m"
+		echo -e "\e[31m${DST_now}:Mod 有更新！ \e[0m"
 		echo " "
 		c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
-		restart_server "$cluster_name"
+		restart_server "$cluster_name" -AUTO
 		DST_has_mods_update=false
 	elif [ ${DST_has_mods_update} == false ]; then
 		echo " "
@@ -683,25 +696,28 @@ checkprocess_select() {
 	# 获取进程名
 	get_process_name    "$cluster_name"
 	log_path=$server_log_path_main
-	process_name_check=$process_name_main
+
 	if [ "$world_check_flag" == "地上" ]; then
 		script_name="start_server_master.sh"
+		process_name_check=$process_name_master
 	else
 		script_name="start_server_caves.sh"
+		process_name_check=$process_name_caves
 	fi
+
 	if [[ $(screen -ls | grep --text -c "$process_name_check") -eq 1 ]]; then
 		echo "$world_check_flag服务器运行正常"
 	else
 		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
-		start_server_select "$cluster_name" "$process_name_check" "$script_name"
-		start_server_check_select "$world_check_flag" "$log_path" 
+		start_server_select "$cluster_name" "$process_name_check" "$script_name" -AUTO
+		start_server_check_select "$world_check_flag" "$log_path"  -AUTO
 	fi
 
 	if [[ $(grep --text "Failed to send server broadcast message" -c "${log_path}") -gt 0 ]] || [[ $(grep --text "Failed to send server listings" -c "${log_path}") -gt 0 ]]; then
 		get_playerList "$cluster_name"
 		if [ "$have_player" == false ]; then
 			c_announce="【$world_check_flag】Failed to send server broadcast message或者Failed to send server listings,网络有点问题，且当前服务器没人，服务器需要重启,给您带来的不便还请谅解！！！"
-			restart_server "$cluster_name"
+			restart_server "$cluster_name" -AUTO
 		fi
 	fi
 }
@@ -736,7 +752,7 @@ auto_update() {
 	script_path_name=\"$script_path/$script_name\"
 	# 使用脚本的方法
 	script(){
-		bash \$script_path_name \"\$1\" $cluster_name
+		bash \$script_path_name \"\$1\" $cluster_name \"-AUTO\"
 	}
 	# 获取天数信息
 	get_daysInfo()
