@@ -28,7 +28,7 @@
 # 2023/01/11 更加智能的更新脚本，不在绝对路径更新到最高级目录
 
 #测试版token
-BETA_TOKEN="updatebeta"
+BETA_TOKEN="returnofthembeta"
 # 饥荒存档位置
 DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 # 默认游戏路径
