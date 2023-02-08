@@ -26,6 +26,7 @@
 # 2023/01/09 新增存储玩家信息功能,位置在"${DST_SAVE_PATH}"/"$cluster_name"/PlayerList/，方便查找id来ban人，查看房间人数方法调整，更改备份数量至20为上限
 # 2023/01/10 优化代码结构，更改保存人物信息为有人在服务器的时候再保存
 # 2023/01/11 更加智能的更新脚本，不在绝对路径更新到最高级目录
+# 2023/02/08 增加仅在服务器无人时更新的设置（在控制台功能中）
 
 #测试版token
 BETA_TOKEN="returnofthembeta"
@@ -35,7 +36,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.0"
+script_version="1.7.1"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -119,7 +120,7 @@ console() {
 		echo "                                                                                  "
 		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
 		echo "                                                                                  "
-		echo "	[7]利用备份回档-地下   [8]返回上一级"
+		echo "	[7]利用备份回档-地下   [8]无人时更新配置  [9]返回上一级"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
@@ -152,9 +153,38 @@ console() {
 			7)
 				get_server_save_path_caves
 				;;
-			8) main ;;
+			8) config_auto_update_anyway 
+				;;
+			9) main 
+				;;
 			esac)
 	done
+}
+# 无人时更新配置
+config_auto_update_anyway(){
+	if [ "$(grep --text auto_update_anyway  "$script_files_path/config.txt"  | awk '{print $3}')" == "true" ];then
+		echo "当前为直接更新，无论服务器有没有人"
+	elif [ "$(grep --text auto_update_anyway  "$script_files_path/config.txt"  | awk '{print $3}')" == "false" ];then
+		echo "当前为仅在服务器有没人时更新"
+	fi
+	auto_update_anyway=$(grep --text auto_update_anyway  "$script_files_path/config.txt"  | awk '{print $3}')
+	echo "##############################################"
+	echo "############# 请选择更改到的模式 #############"
+	echo "#       1.直接更新，无论服务器有没有人       #"
+	echo "#       2.仅在服务器有没人时更新             #"
+	echo "##############################################"
+	echo "输入数字序号即可,如:1 "
+	read -r auto_update_anyway_select
+	if [ "$auto_update_anyway_select" == "1" ];then
+		sed -i "2s/${auto_update_anyway}/true/g"  "$script_files_path/config.txt"
+		echo "已修改为直接更新，无论服务器有没有人"
+	elif [ "$auto_update_anyway_select" == "2" ];then
+		sed -i "2s/${auto_update_anyway}/false/g"  "$script_files_path/config.txt"
+		echo "已修改为仅在服务器有没人时更新"
+	else 
+		echo "输入有误，请重新输入"
+		config_auto_update_anyway
+	fi
 }
 # 通过版本号获取参数
 init_getByVersion() {
@@ -166,18 +196,23 @@ init_getByVersion() {
 	if [ ! -d "$script_files_path" ]; then
 		mkdir "$script_files_path"
 	fi
-	if [ ! -f "$script_files_path/gameversion.txt" ]; then
-		echo "正式版32位" >"$script_files_path/gameversion.txt"
+	if [ -f "$script_files_path/gameversion.txt" ];then
+		rm -rf "$script_files_path/gameversion.txt"
 	fi
+	if [ ! -f "$script_files_path/config.txt" ]; then
+		echo "version = 正式版32位" > "$script_files_path/config.txt"
+		echo "auto_update_anyway = true" >> "$script_files_path/config.txt"
+	fi
+	
 	# 存档需要开启的游戏版本
-	if [ ! -f "$script_files_path/gameversion.txt" ]; then
-		echo "$cluster_dst_game_version" >"$script_files_path/gameversion.txt"
-	fi
-	cluster_dst_game_version=$(cat "$script_files_path/gameversion.txt")
+	# if [ ! -f "$script_files_path/gameversion.txt" ]; then
+	# 	echo "$cluster_dst_game_version" >"$script_files_path/gameversion.txt"
+	# fi
+	cluster_dst_game_version=$(grep version "$script_files_path/config.txt" | awk '{print $3}')
 	# 获取存档开启方式flag
 	cluster_flag=$(get_cluster_flag "$cluster_name")
 	# 开启存档所需要的开启的应用名及其位置
-	if [[ $(grep --text -c "正式版" "$script_files_path/gameversion.txt") -gt 0 ]]; then
+	if [[ $(grep --text -c "正式版" "$script_files_path/config.txt") -gt 0 ]]; then
 		gamesPath="$DST_DEFAULT_PATH"
 		buildid_version_flag="public"
 	else
@@ -185,10 +220,12 @@ init_getByVersion() {
 		buildid_version_flag="updatebeta"
 	fi
 	dedicated_server_mods_setup="${gamesPath}"/mods/dedicated_server_mods_setup.lua
-	dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin
-	if [[ $(grep --text -c "32位" "$script_files_path"/gameversion.txt) -gt 0 ]]; then
+	
+	if [[ $(grep --text -c "32位" "$script_files_path/config.txt") -gt 0 ]]; then
+		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
 	else
+		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin64
 		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
 	fi
 }
@@ -239,6 +276,7 @@ init() {
 # 选择开启方式
 howtostart() {
 	cluster_name=$1
+	check_player=$3
 	addmod "$cluster_name"
 	get_process_name "$cluster_name"
 	get_cluster_flag "$cluster_name"
@@ -315,7 +353,7 @@ start_server_select() {
 		shard_name="Caves"
 	fi
 	echo "#!/bin/bash
-	cd \"$gamesPath/bin\" || exit
+	cd \"$dontstarve_dedicated_server_nullrenderer_path\" || exit
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
@@ -370,7 +408,7 @@ start_server_check_select() {
 			echo -en "\r$w_flag服务器开启中,请稍后...                            "
 			sleep 1
 		fi
-		if [ $mod_flag == 1 ] && [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -eq 0 ]]; then
+		if [ $mod_flag == 1 ] && [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -eq 0 ]] && [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -eq 0 ]]; then
 			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后.                    "
 			sleep 1
 			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后..                   "
@@ -378,7 +416,7 @@ start_server_check_select() {
 			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后...                  "
 			sleep 1
 		fi
-		if [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
+		if [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -gt 0 ]] || [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
 			echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
 			mod_flag=0
 			download_flag=0
@@ -430,8 +468,9 @@ start_server_check_fix() {
 		echo "# 加载 Ubuntu Linux 环境 #"
 		echo "##########################"
 		echo ""
-		sudo apt-get install libstdc++6
-		sudo apt-get install lib32stdc++6
+		sudo apt-get -y install libstdc++6
+		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libcurl3-gnutls:i386
 	elif
 		[ "$os" == "CentOS" ]
 	then
@@ -489,8 +528,9 @@ addmod() {
 restart_server() {
 	cluster_name=$1
 	auto_flag=$2
-	close_server "$cluster_name" "$auto_flag"
-	howtostart "$cluster_name" "$auto_flag"
+	check_player=$3
+	close_server "$cluster_name" "$auto_flag" "$check_player"
+	howtostart "$cluster_name" "$auto_flag" "$check_player"
 }
 # 更新游戏
 update_game() {
@@ -510,20 +550,22 @@ update_game() {
 close_server() {
 	cluster_name=$1
 	close_flag=$2
+	check_player=$3
 	get_process_name "$cluster_name"
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
-		if [ "$2" == "" ] || [ "$2" == "-close" ] ;then
+		if [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ] ;then
 			close_server_autoUpdate "$cluster_name"
 		fi
+
 		# 进程名称符合就删除
 		while :; do
 			sleep 1
 			if [[ $(screen -ls | grep --text -c "$process_name_master") -gt 0 ]]; then
-				close_server_select "$process_name_master" "地上" "$close_flag"
+				close_server_select "$process_name_master" "地上" "$close_flag" "$check_player" 
 			elif [[ $(screen -ls | grep --text -c "$process_name_caves") -gt 0 ]]; then
-				close_server_select "$process_name_caves" "地下" "$close_flag"
+				close_server_select "$process_name_caves" "地下" "$close_flag"  "$check_player" 
 			else
 				echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
 				break
@@ -539,39 +581,57 @@ close_server_select() {
 	process_name_close=$1
 	world_close_flag=$2
 	close_flag=$3
-	if [ "$close_flag" == "-close" ];then
-		c_announce="服务器即将关闭，给您带来的不便还请谅解！！！"
-	else
-		c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
-	fi
-	for i in $(screen -ls | grep --text -w "$process_name_close" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
-		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-		echo -en "\r$world_close_flag服务器正在发布公告.  "
-		sleep 1.5
-		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-		echo -en "\r$world_close_flag服务器正在发布公告.. "
-		sleep 1.5
-		screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-		echo -en "\r$world_close_flag服务器正在发布公告..."
-		sleep 1.5
-		screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-		echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!                \e[0m"
-	done
-	while :; do
-		sleep 1
-		if [[ $(screen -ls | grep --text -c "$process_name_close") -gt 0 ]]; then
-			sleep 1.5
-			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.  "
-			sleep 1.5
-			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.. "
-			sleep 1.5
-			echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后..."
-		else
-			echo -e "\r\e[92m$world_close_flag进程 $cluster_name 已关闭!!!                    \e[0m"
-			sleep 1
-			break
+	check_player=$4
+	player_flag="false"
+	if [ "$check_player" == "-NOBODY" ];then
+		get_playerList "$cluster_name"
+		if [ "$have_player" != false ]; then
+			player_flag="true"
 		fi
-	done
+	fi
+
+	# test
+	# player_flag="true"
+	# test
+
+	if [[ "$player_flag" == "false" ]] || [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ];then
+		if [ "$close_flag" == "-close" ];then
+			c_announce="服务器即将关闭，给您带来的不便还请谅解！！！"
+		elif [ "$close_flag" == "" ];then
+			c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
+		fi
+		for i in $(screen -ls | grep --text -w "$process_name_close" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r$world_close_flag服务器正在发布公告.  "
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r$world_close_flag服务器正在发布公告.. "
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+			echo -en "\r$world_close_flag服务器正在发布公告..."
+			sleep 1.5
+			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
+			echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!                \e[0m"
+		done
+		while :; do
+			sleep 1
+			if [[ $(screen -ls | grep --text -c "$process_name_close") -gt 0 ]]; then
+				sleep 1.5
+				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.  "
+				sleep 1.5
+				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.. "
+				sleep 1.5
+				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后..."
+			else
+				echo -e "\r\e[92m$world_close_flag进程 $cluster_name 已关闭!!!                    \e[0m"
+				sleep 1
+				break
+			fi
+		done
+	else
+		echo "由于设置了仅在无人时更新,所以暂时不更新！"
+	fi
+
 }
 
 # 关闭服务器自动管理部分
@@ -620,8 +680,13 @@ checkupdate() {
 				update_game BETA
 			fi
 		fi
-		# 重启该存档，但不关闭当前进程
-		restart_server  "$cluster_name"  -AUTO
+		auto_update_anyway=$(grep --text auto_update_anyway  "$script_files_path/config.txt"  | awk '{print $3}')
+		if [ "$auto_update_anyway" == "true" ];then
+			# 重启该存档，但不关闭当前进程
+			restart_server  "$cluster_name"  -AUTO
+		else
+			restart_server  "$cluster_name"  -AUTO  -NOBODY
+		fi
 	else
 		echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
 	fi
@@ -642,12 +707,12 @@ checkmodupdate() {
 	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
 	if [ "$cluster_flag" == 1 ] || [ "$cluster_flag" == 2 ]; then
 		# NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
-		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Master -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
-		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_master}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_caves}") -gt 0 ]]; then
+		./$dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Master -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
+		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_master}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_master}") -gt 0 ]]; then
 			DST_has_mods_update=true
 		fi
 	elif [ "$cluster_flag" == 4 ]; then
-		./dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Caves -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		./$dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Caves -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
 		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_caves}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_caves}") -gt 0 ]]; then
 			DST_has_mods_update=true
 		fi
@@ -656,17 +721,27 @@ checkmodupdate() {
 	fi
 	if [[ $(grep --text "DownloadPublishedFile" -c "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt") -gt 0 ]]; then
 		DST_has_mods_update=true
-		echo   "DownloadPublishedFile" 
 	else
 		DST_has_mods_update=false
 	fi
+
+	# test
+	# DST_has_mods_update=true
+
+
 	if [ ${DST_has_mods_update} == true ]; then
-		echo " "
-		echo -e "\e[31m${DST_now}:Mod 有更新！ \e[0m"
-		echo " "
-		c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
-		restart_server "$cluster_name" -AUTO
-		DST_has_mods_update=false
+
+		if [ "$auto_update_anyway" == "true" ];then
+			# 重启该存档，但不关闭当前进程
+			echo " "
+			echo -e "\e[31m${DST_now}:Mod 有更新！ \e[0m"
+			echo " "
+			c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
+			restart_server "$cluster_name" -AUTO
+			DST_has_mods_update=false
+		else
+			restart_server  "$cluster_name"  -AUTO  -NOBODY
+		fi
 	elif [ ${DST_has_mods_update} == false ]; then
 		echo " "
 		echo -e "\e[92m${DST_now}:Mod 没有更新! \e[0m"
@@ -762,7 +837,48 @@ auto_update() {
 		sleep 1
 		presentday=\$(grep --text \"$server_log_path_main\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
 	}
-
+	backup()
+	{
+		# 自动备份
+		if [ \"\$timecheck\" == 0 ];then
+			if [  -d \"$master_saves_path\" ];then
+				cd \"$master_saves_path\" || exit
+				if [ ! -d \"$master_saves_path/saves_bak\" ];then
+					mkdir saves_bak
+				fi
+				cd \"$master_saves_path/saves_bak\" || exit
+				master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+				if [ \"\$master_saves_bak\" -gt 21 ];then
+					find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+				fi
+				cd \"$master_saves_path\"|| exit
+				zip -r saves_bak/\"master_\${presentday}days\".zip save/ >> /dev/null 2>&1
+			fi
+			if [ -d \"$caves_saves_path\" ];then
+				cd \"$caves_saves_path\" || exit			
+				if [ ! -d \"$caves_saves_path/saves_bak\" ];then
+					mkdir saves_bak
+				fi
+				cd \"$caves_saves_path/saves_bak\" || exit
+				caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+				if [ \"\$caves_saves_bak\" -gt 21 ];then
+					find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+				fi
+				cd \"$caves_saves_path\" || exit
+				zip -r saves_bak/\"caves_\${presentday}days\".zip save/ >> /dev/null 2>&1
+			fi
+			cd 	\"$script_files_path\" || exit
+			if [ ! -d \"$script_files_path/Player\" ];then
+				mkdir Player
+			fi
+			zip -r $script_files_path/Player/\"playerlist_\${presentday}days\".zip \"playerlist.txt\" >> /dev/null 2>&1
+			echo \"\" > playerlist.txt
+			ZipNum_Player=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
+			if [ \"\$ZipNum_Player\" -gt 21 ];then
+				find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
+			fi
+		fi
+	}
 	timecheck=0
 	# 保持运行
 	while :
@@ -772,45 +888,7 @@ auto_update() {
 				get_daysInfo		
 				echo \"当前服务器天数:\$presentday\"		
 				timecheck=\$(( timecheck%750 ))
-				# 自动备份
-				if [ \"\$timecheck\" == 0 ];then
-					if [  -d \"$master_saves_path\" ];then
-						cd \"$master_saves_path\" || exit
-						if [ ! -d \"$master_saves_path/saves_bak\" ];then
-							mkdir saves_bak
-						fi
-						cd \"$master_saves_path/saves_bak\" || exit
-						master_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$master_saves_bak\" -gt 21 ];then
-							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
-						fi
-						cd \"$master_saves_path\"|| exit
-						zip -r saves_bak/\"master_\${presentday}days\".zip save/ >> /dev/null 2>&1
-					fi
-					if [ -d \"$caves_saves_path\" ];then
-						cd \"$caves_saves_path\" || exit			
-						if [ ! -d \"$caves_saves_path/saves_bak\" ];then
-							mkdir saves_bak
-						fi
-						cd \"$caves_saves_path/saves_bak\" || exit
-						caves_saves_bak=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-						if [ \"\$caves_saves_bak\" -gt 21 ];then
-							find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
-						fi
-						cd \"$caves_saves_path\" || exit
-						zip -r saves_bak/\"caves_\${presentday}days\".zip save/ >> /dev/null 2>&1
-					fi
-					cd 	\"$script_files_path\" || exit
-					if [ ! -d \"$script_files_path/Player\" ];then
-						mkdir Player
-					fi
-					zip -r $script_files_path/Player/\"playerlist_\${presentday}days\".zip \"playerlist.txt\" >> /dev/null 2>&1
-					echo \"\" > playerlist.txt
-					ZipNum_Player=\$(find . -maxdepth 1 -name '*.zip' | wc -l)
-					if [ \"\$ZipNum_Player\" -gt 21 ];then
-						find . -maxdepth 1 -mtime +30 -name '*.zip'  | awk '{if(NR -gt 10){print \$1}}' |xargs rm -f {};
-					fi
-				fi
+				backup
 				((timecheck++))
 				script -checkupdate
 				script -checkmodupdate
@@ -1165,6 +1243,7 @@ PreLibrary() {
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libc6-i386
 		sudo apt-get -y install libcurl4-gnutls-dev:i386
+		sudo apt-get -y install libcurl3-gnutls:i386
 		sudo dpkg --add-architecture i386
 
 		sudo apt-get -y install lib64gcc1
@@ -1235,7 +1314,7 @@ PreLibrary() {
 prepare() {
 	cd "$HOME" || exit
 	if [ -d "./dst" ]; then
-		echo "新脚本的目录结构已更改，需要重新下载游戏本体，请稍后。。。"
+		echo "新脚本的目录结构已更改，可能需要重新下载游戏本体，请稍后。。。"
 		mv dst/ DST/
 	fi
 	if [ -d "./dst_beta" ]; then
@@ -1278,19 +1357,21 @@ change_game_version() {
 	echo "#      3.测试版32位       #"
 	echo "#      4.测试版64位       #"
 	echo "###########################"
+	echo "输入数字序号即可,如:1 "
 	read -r game_version
+	game_version_now=$(grep --text version  "$script_files_path/config.txt" | awk '{print $3}')
 	if [ "$game_version" == "1" ]; then
 		echo "更改该存档服务端版本为正式版32位!"
-		echo "正式版32位" >"$script_files_path/gameversion.txt"
+		sed -i "1s/${game_version_now}/正式版32位/g"  "$script_files_path/config.txt"
 	elif [ "$game_version" == "2" ]; then
 		echo "更改该存档服务端版本为正式版64位!"
-		echo "正式版64位" >"$script_files_path/gameversion.txt"
+		sed -i "1s/${game_version_now}/正式版64位/g"  "$script_files_path/config.txt"
 	elif [ "$game_version" == "3" ]; then
 		echo "更改该存档服务端版本为测试版32位!"
-		echo "测试版32位" >"$script_files_path/gameversion.txt"
+		sed -i "1s/${game_version_now}/测试版32位/g"  "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
 		echo "更改该存档服务端版本为测试版64位!"
-		echo "测试版64位" >"$script_files_path/gameversion.txt"
+		sed -i "1s/${game_version_now}/测试版64位/g"  "$script_files_path/config.txt"
 	else
 		echo "输入有误,请重新输入"
 		change_game_version
@@ -1312,6 +1393,7 @@ get_cluster_flag() {
 	fi
 	return $cluster_flag
 }
+
 # 日志文件路径
 get_server_log_path() {
 	cluster_name=$1
@@ -1404,6 +1486,8 @@ elif [ "$1" == "-checkupdate" ]; then
 	checkupdate "$2"
 elif [ "$1" == "-checkmodupdate" ]; then
 	checkmodupdate "$2"
+elif [ "$1" == "-get_playerList" ]; then
+	get_playerList "$2"
 elif [ "$1" == "" ] && [ "$2" == "" ]; then
 	prepare
 	clear
