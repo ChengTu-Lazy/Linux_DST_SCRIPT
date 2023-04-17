@@ -27,6 +27,8 @@
 # 2023/01/10 优化代码结构，更改保存人物信息为有人在服务器的时候再保存
 # 2023/01/11 更加智能的更新脚本，不在绝对路径更新到最高级目录
 # 2023/02/08 增加仅在服务器无人时更新的设置（在控制台功能中）
+# 2023/04/16 修复开启存档时出现存档崩溃卡在检测开启的阶段的bug
+# 2023/04/17 修改一部分ui，更方便选择，直接输入数字即可
 
 #测试版token
 BETA_TOKEN="returnofthembeta"
@@ -36,7 +38,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.1"
+script_version="1.7.2"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -44,7 +46,7 @@ os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' 
 # 脚本当前所在目录
 script_path=$(pwd)
 # 脚本当前名称
-script_name=$(basename "$0")
+SCRIPT_NAME=$(basename "$0")
 
 #主菜单
 main() {
@@ -203,11 +205,6 @@ init_getByVersion() {
 		echo "version = 正式版32位" > "$script_files_path/config.txt"
 		echo "auto_update_anyway = true" >> "$script_files_path/config.txt"
 	fi
-	
-	# 存档需要开启的游戏版本
-	# if [ ! -f "$script_files_path/gameversion.txt" ]; then
-	# 	echo "$cluster_dst_game_version" >"$script_files_path/gameversion.txt"
-	# fi
 	cluster_dst_game_version=$(grep version "$script_files_path/config.txt" | awk '{print $3}')
 	# 获取存档开启方式flag
 	cluster_flag=$(get_cluster_flag "$cluster_name")
@@ -314,9 +311,9 @@ start_server() {
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
-		if [ "$(screen -ls | grep --text -c "$process_name_caves")" -gt 0 ]; then
+		if [ "$(screen -ls | grep --text -c "\<$process_name_caves\>")" -gt 0 ]; then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
-		elif [ "$(screen -ls | grep --text -c "$process_name_master")" -gt 0 ]; then
+		elif [ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]; then
 			echo "该服务器已开启地上服务器,请先关闭再启动！！"
 		else
 			# 判断是否有token文件
@@ -370,10 +367,10 @@ start_server_check() {
 	start_time=$(date +%s)
 	get_server_log_path "$cluster_name"
 	init_getByVersion "$cluster_name"
-	if [[ "$(screen -ls | grep --text -c "$process_name_master")" -gt 0 ]]; then
+	if [[ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]]; then
 		start_server_check_select "地上" "$server_log_path_master"
 	fi
-	if [[ "$(screen -ls | grep --text -c "$process_name_caves")" -gt 0 ]]; then
+	if [[ "$(screen -ls | grep --text -c "\<$process_name_caves\>")" -gt 0 ]]; then
 		start_server_check_select "地下" "$server_log_path_caves"
 	fi
 	end_time=$(date +%s)
@@ -400,6 +397,7 @@ start_server_check_select() {
 	download_flag=1
 	check_flag=0
 	while :; do
+		checkprocess "$cluster_name" "no_output"
 		if [ "$check_flag" == 0 ] && [ $mod_flag == 0 ]; then
 			echo -en "\r$w_flag服务器开启中,请稍后.                              "
 			sleep 1
@@ -562,7 +560,7 @@ close_server() {
 		# 进程名称符合就删除
 		while :; do
 			sleep 1
-			if [[ $(screen -ls | grep --text -c "$process_name_master") -gt 0 ]]; then
+			if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 				close_server_select "$process_name_master" "地上" "$close_flag" "$check_player" 
 			elif [[ $(screen -ls | grep --text -c "$process_name_caves") -gt 0 ]]; then
 				close_server_select "$process_name_caves" "地下" "$close_flag"  "$check_player" 
@@ -589,11 +587,6 @@ close_server_select() {
 			player_flag="true"
 		fi
 	fi
-
-	# test
-	# player_flag="true"
-	# test
-
 	if [[ "$player_flag" == "false" ]] || [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ];then
 		if [ "$close_flag" == "-close" ];then
 			c_announce="服务器即将关闭，给您带来的不便还请谅解！！！"
@@ -615,7 +608,7 @@ close_server_select() {
 		done
 		while :; do
 			sleep 1
-			if [[ $(screen -ls | grep --text -c "$process_name_close") -gt 0 ]]; then
+			if [[ $(screen -ls | grep --text -c "\<$process_name_close\>") -gt 0 ]]; then
 				sleep 1.5
 				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.  "
 				sleep 1.5
@@ -638,11 +631,11 @@ close_server_select() {
 close_server_autoUpdate() {
 	process_name_AutoUpdate="AutoUpdate $1"
 	process_name_AutoUpdate_old="DST $1 AutoUpdate"
-	if [ "$(screen -ls | grep --text -c "$process_name_AutoUpdate")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
+	if [ "$(screen -ls | grep --text -c "\<$process_name_AutoUpdate\>")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
 		for i in $(screen -ls | grep --text -w "$process_name_AutoUpdate" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
 			kill "$i"
 		done
-	elif [ "$(screen -ls | grep --text -c "$process_name_AutoUpdate_old")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
+	elif [ "$(screen -ls | grep --text -c "\<$process_name_AutoUpdate_old\>")" -gt 0 ] && [ "$process_name_AutoUpdate" != "" ]; then
 		for i in $(screen -ls | grep --text -w "$process_name_AutoUpdate_old" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
 			kill "$i"
 		done
@@ -692,78 +685,91 @@ checkupdate() {
 	fi
 }
 
-#查看游戏mod更新情况
+# 查看游戏mod更新情况
 checkmodupdate() {
-	cluster_name=$1
-	DST_now=$(date +%Y年%m月%d日%H:%M)
-	init_getByVersion "$cluster_name"
-	get_cluster_flag "$cluster_name"
-	# 保存独立存档mod文件的位置
-	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
-	get_server_log_path "$cluster_name"
-	echo " " 
-	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新。。。\e[0m"
-	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
-	# 1:地上地下都有 2:只有地上 3:啥也没有 4:只有地下
-	if [ "$cluster_flag" == 1 ] || [ "$cluster_flag" == 2 ]; then
-		# NeedsUpdate=$(awk '/NeedsUpdate/{print $2}' "${ugc_mods_path}"/"$cluster_name"/Master/appworkshop_322330.acf | sed 's/"//g')
-		./$dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Master -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
-		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_master}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_master}") -gt 0 ]]; then
-			DST_has_mods_update=true
-		fi
-	elif [ "$cluster_flag" == 4 ]; then
-		./$dontstarve_dedicated_server_nullrenderer -cluster "$cluster_name" -shard Caves -only_update_server_mods -ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
-		if [[ $(grep --text "is out of date and needs to be updated for new users to be able to join the server" -c "${server_log_path_caves}") -gt 0 ]] ||  [[ $(grep --text "模组已过期" -c "${server_log_path_caves}") -gt 0 ]]; then
-			DST_has_mods_update=true
-		fi
-	else
-		DST_has_mods_update=false
-	fi
-	if [[ $(grep --text "DownloadPublishedFile" -c "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt") -gt 0 ]]; then
-		DST_has_mods_update=true
-	else
-		DST_has_mods_update=false
-	fi
+    cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
+    
+    DST_now=$(date +%Y年%m月%d日%H:%M)
+    init_getByVersion "$cluster_name"
+    get_cluster_flag "$cluster_name"
 
-	# test
-	# DST_has_mods_update=true
+    # 保存独立存档mod文件的位置
+    ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+    get_server_log_path "$cluster_name"
 
+    echo ""
+    echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
+    cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
 
-	if [ ${DST_has_mods_update} == true ]; then
+    local has_mods_update=false
+    case $cluster_flag in
+        1|2) # 地上地下都有或者只有地上
+            ./$dontstarve_dedicated_server_nullrenderer \
+                -cluster "$cluster_name" \
+                -shard Master \
+                -only_update_server_mods \
+                -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
 
-		if [ "$auto_update_anyway" == "true" ];then
-			# 重启该存档，但不关闭当前进程
-			echo " "
-			echo -e "\e[31m${DST_now}:Mod 有更新！ \e[0m"
-			echo " "
-			c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
-			restart_server "$cluster_name" -AUTO
-			DST_has_mods_update=false
-		else
-			restart_server  "$cluster_name"  -AUTO  -NOBODY
-		fi
-	elif [ ${DST_has_mods_update} == false ]; then
-		echo " "
-		echo -e "\e[92m${DST_now}:Mod 没有更新! \e[0m"
-		echo " "
-	fi
+            if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" \
+                || grep --text -q -e "模组已过期" "${server_log_path_master}"; then
+                has_mods_update=true
+            fi
+            ;;
+        4) # 只有地下
+            ./$dontstarve_dedicated_server_nullrenderer \
+                -cluster "$cluster_name" \
+                -shard Caves \
+                -only_update_server_mods \
+                -ugc_directory "$ugc_mods_path/$cluster_name" > "$cluster_name".txt
+
+            if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_caves}" \
+                || grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
+                has_mods_update=true
+            fi
+            ;;
+    esac
+
+    if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
+        has_mods_update=true
+    fi
+
+    if $has_mods_update; then
+        if [[ "$auto_update_anyway" == "true" ]]; then
+            # 重启该存档，但不关闭当前进程
+            echo ""
+            echo -e "\e[31m${DST_now}: Mod 有更新！\e[0m"
+            echo ""
+
+            c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
+            restart_server "$cluster_name" -AUTO
+        else
+            restart_server  "$cluster_name"  -AUTO  -NOBODY
+        fi
+    else
+        echo ""
+        echo -e "\e[92m${DST_now}: Mod 没有更新！\e[0m"
+        echo ""
+    fi
 }
+
 
 #查看进程执行情况
 checkprocess() {
 	cluster_name=$1
+	flag_checkprocess=$2
 	init_get_cluster_main "$cluster_name"
 	if [ -d "$master_saves_path" ]; then
-		checkprocess_select "$cluster_name" "地上"
+		checkprocess_select "$cluster_name" "地上" "$flag_checkprocess"
 	fi
 	if [ -d "$caves_saves_path" ]; then
-		checkprocess_select "$cluster_name" "地下"
+		checkprocess_select "$cluster_name" "地下" "$flag_checkprocess"
 	fi
 }
 
 checkprocess_select() {
 	cluster_name=$1
 	world_check_flag=$2
+	flag_checkprocess=$3
 	# 获取存档的日志路径
 	get_server_log_path "$cluster_name"
 	# 通过版本号获取参数
@@ -780,11 +786,14 @@ checkprocess_select() {
 		process_name_check=$process_name_caves
 	fi
 
-	if [[ $(screen -ls | grep --text -c "$process_name_check") -eq 1 ]]; then
-		echo "$world_check_flag服务器运行正常"
+	if [[ $(screen -ls | grep --text -c "\<$process_name_check\>") -eq 1 ]]; then
+		if [[ "$flag_checkprocess" != "no_output" ]]
+		then
+			echo "$world_check_flag服务器运行正常"
+		fi
 	else
 		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
-		start_server_select "$cluster_name" "$process_name_check" "$script_name" -AUTO
+		start_server_select "$cluster_name" "\<$process_name_check\>" "$script_name" -AUTO
 		start_server_check_select "$world_check_flag" "$log_path"  -AUTO
 	fi
 
@@ -802,7 +811,10 @@ check_server() {
 	printf '=%.0s' {1..60}
 	echo " "
 	echo " "
-	screen -ls
+	echo ""
+	sessions=$(screen -ls | grep Detached | cat -n | awk '{printf "%-4s%s %s\n", $1, $2,$3}' )
+	echo "$sessions"
+	echo ""
 	echo " "
 	printf '=%.0s' {1..23}
 	echo -e "输入要切换的PID\c"
@@ -812,7 +824,8 @@ check_server() {
 	echo "PS:回车后会进入地上或地下的运行界面"
 	echo "   手动输入c_shutdown(true)回车保存退出"
 	echo "   进入后不想关闭请按ctrl+a+d"
-	read -r pid1
+	read -r folder_number
+	pid1=$(echo "$sessions" | awk '{if($1 == '"$folder_number"') print $2}'  | cut -d '.' -f1)
 	screen -r "$pid1"
 }
 
@@ -824,7 +837,7 @@ auto_update() {
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
 	# 当前脚本所在位置及名称
-	script_path_name=\"$script_path/$script_name\"
+	script_path_name=\"$script_path/$SCRIPT_NAME\"
 	# 使用脚本的方法
 	script(){
 		bash \$script_path_name \"\$1\" $cluster_name \"-AUTO\"
@@ -976,6 +989,37 @@ get_process_name() {
 	fi
 }
 
+# # 存档
+# get_cluster_name() {
+# 	if [ ! -d "${DST_SAVE_PATH}" ]; then
+# 		mkdir "$HOME"/.klei
+# 		cd "$HOME"/.klei || exit
+# 		mkdir "${DST_SAVE_PATH}"
+# 	fi
+# 	printf '=%.0s' {1..26}
+# 	echo -e "存档目录\c"
+# 	printf '=%.0s' {1..26}
+# 	echo ""
+# 	echo ""
+# 	cd "${DST_SAVE_PATH}" || exit
+# 	ls
+# 	cd "$HOME" || exit
+# 	echo ""
+# 	printf '=%.0s' {1..60}
+# 	echo ""
+# 	echo "请输入存档代码:"
+# 	read -r cluster_name
+# 	if [ "$cluster_name" == "" ]; then
+# 		echo "存档名输入有误！"
+# 		main
+# 	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+# 		echo "存档不存在！"
+# 		main
+# 	else
+# 		init "$cluster_name"
+# 	fi
+# }
+
 # 存档
 get_cluster_name() {
 	if [ ! -d "${DST_SAVE_PATH}" ]; then
@@ -983,19 +1027,20 @@ get_cluster_name() {
 		cd "$HOME"/.klei || exit
 		mkdir "${DST_SAVE_PATH}"
 	fi
-	printf '=%.0s' {1..26}
-	echo -e "存档目录\c"
-	printf '=%.0s' {1..26}
-	echo ""
-	echo ""
+	# 显示搜索结果的 UI
+	echo "===================================="
+	echo "          文件夹搜索结果            "
+	echo "===================================="
 	cd "${DST_SAVE_PATH}" || exit
-	ls
-	cd "$HOME" || exit
-	echo ""
-	printf '=%.0s' {1..60}
-	echo ""
-	echo "请输入存档代码:"
-	read -r cluster_name
+	# 列出所有文件夹并为它们编号
+	folders=$(find . -maxdepth 1 ! -path . -type d -printf "%f\n" | cat -n )
+
+	# 显示带有编号的文件夹列表
+	echo "$folders" | awk '{printf "%-4s%s\n", $1, $2}'
+	echo "输入数字选择要打开的存档      "
+	echo "===================================="
+	read -r folder_number
+	cluster_name=$(echo "$folders" | awk '{if($1 == '"$folder_number"') print $2}')
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
@@ -1007,18 +1052,23 @@ get_cluster_name() {
 	fi
 }
 
+
 # 存档进程名
 get_cluster_name_processing() {
 	printf '=%.0s' {1..12}
 	echo -e "请确保要关闭的存档版本和当前脚本版本一致(不区分位数)\c"
 	printf '=%.0s' {1..12}
 	echo ""
-	screen -ls
+	echo ""
+	sessions=$(screen -ls | grep Detached | cat -n | awk '{printf "%s\n", $3}' | uniq | cat -n | awk '{printf "%-4s%s\n", $1, $2}')
+	echo "$sessions"
+	echo ""
 	printf '=%.0s' {1..28}
-	echo -e "请输入要关闭的存档名\c"
+	echo -e "请输入要关闭的存档的序号\c"
 	printf '=%.0s' {1..28}
 	echo ""
-	read -r cluster_name
+	read -r folder_number
+	cluster_name=$(echo "$sessions" | awk '{if($1 == '"$folder_number"') print $2}')
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
@@ -1032,14 +1082,13 @@ get_cluster_name_processing() {
 
 # 获取玩家列表
 get_playerList() {
-	cluster_name=$1
 	get_process_name    "$cluster_name"
 	get_server_log_path "$cluster_name"
 	# 存档所在路径
 	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
 	# 脚本文件所在文件夹
 	script_files_path="$cluster_path/ScriptFiles"
-	if [[ $(screen -ls | grep --text -c "$process_name_main") -gt 0 ]]; then
+	if [[ $(screen -ls | grep --text -c "\<$process_name_main\>") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
 		sleep 1
@@ -1078,13 +1127,13 @@ serverinfo() {
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
 	get_playerList
 	getmonster
-	if [[ $(screen -ls | grep --text -c "$process_name_master") -gt 0 ]]; then
+	if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
 		echo -e "\e[33m海象巢:($walrus_camp_master)个  触手怪:($tentacle_master)个  蜘蛛巢:($spiderden_master)个\e[0m"
 		echo -e "\e[33m高脚鸟巢:($tallbirdnest_master)个  猎犬丘:($houndmound_master)个  芦苇:($reeds_master)株  墓地:($mudi_master)个\e[0m"
 	fi
 	sleep 2
-	if [[ $(screen -ls | grep --text -c "$process_name_caves") -gt 0 ]]; then
+	if [[ $(screen -ls | grep --text -c "\<$process_name_caves\>") -gt 0 ]]; then
 		echo "===========================地下世界信息========================================"
 		echo -e "\e[33m触手怪:($tentacle_caves)个  蜘蛛巢:($spiderden_caves)个  芦苇:($reeds_caves)株\e[0m"
 		echo -e "\e[33m损坏的发条主教:($bishop_nightmare)个  损坏的发条战车:($rook_nightmare)个  损坏的发条骑士:($knight_nightmare)个\e[0m"
@@ -1094,7 +1143,7 @@ serverinfo() {
 
 # 获取怪物信息
 getmonster() {
-	if [[ $(screen -ls | grep --text -c "$process_name_master") -gt 0 ]]; then
+	if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
@@ -1117,13 +1166,14 @@ getmonster() {
 		houndmound_master=$(grep --text "$server_log_path_master" -e "houndmounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		mound_master=$(grep --text "$server_log_path_master" -e "mounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		gravestone_master=$(grep --text "$server_log_path_master" -e "gravestones in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_1_master=$(grep --text "$server_log_path_master" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_2_master=$(grep --text "$server_log_path_master" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_3_master=$(grep --text "$server_log_path_master" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_1_master=$(grep --text "$server_log_path_master" -e "spiderdens in the world." | awk '{print $4}')
+		spiderden_2_master=$(grep --text "$server_log_path_master" -e "spiderden_2s in the world." | awk '{print $4}')
+		spiderden_3_master=$(grep --text "$server_log_path_master" -e "spiderden_3s in the world." | awk '{print $4}')
 		spiderden_master=$((spiderden_1_master + spiderden_2_master + spiderden_3_master))
 		mudi_master=$((mound_master + gravestone_master))
+		echo 
 	fi
-	if [[ $(screen -ls | grep --text -c "$process_name_caves") -gt 0 ]]; then
+	if [[ $(screen -ls | grep --text -c "\<$process_name_caves\>") -gt 0 ]]; then
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
@@ -1144,9 +1194,9 @@ getmonster() {
 		sleep 1
 		reeds_caves=$(grep --text "$server_log_path_caves" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		tentacle_caves=$(grep --text "$server_log_path_caves" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_2_caves=$(grep --text "$server_log_path_caves" -e "spiderden_2s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_3_caves=$(grep --text "$server_log_path_caves" -e "spiderden_3s in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
+		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | awk '{print $4}')
+		spiderden_2_caves=$(grep --text "$server_log_path_caves" -e "spiderden_2s in the world." | awk '{print $4}')
+		spiderden_3_caves=$(grep --text "$server_log_path_caves" -e "spiderden_3s in the world." | awk '{print $4}')
 		bishop_nightmare=$(grep --text "$server_log_path_caves" -e "bishop_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		rook_nightmare=$(grep --text "$server_log_path_caves" -e "rook_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		knight_nightmare=$(grep --text "$server_log_path_caves" -e "knight_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
