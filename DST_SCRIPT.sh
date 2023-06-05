@@ -29,6 +29,10 @@
 # 2023/02/08 增加仅在服务器无人时更新的设置（在控制台功能中）
 # 2023/04/16 修复开启存档时出现存档崩溃卡在检测开启的阶段的bug
 # 2023/04/17 修改一部分ui，更方便选择，直接输入数字即可
+# 2023/06/05 给代码归类，加注释，方便查阅更改，统一初始化，不再独立初始化
+
+
+##常量区域
 
 #测试版token
 BETA_TOKEN="returnofthembeta"
@@ -47,6 +51,211 @@ os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' 
 script_path=$(pwd)
 # 脚本当前名称
 SCRIPT_NAME=$(basename "$0")
+
+##基础数据的获取
+
+#数据统一初始化
+init_by_cluster_name(){
+	cluster_name=$1
+	if [ "$cluster_name" == "" ]; then
+		ehco "存档名有误"
+		return 0
+	fi
+	# 获取存档所在路径
+	get_path_cluster "$cluster_name"
+	# 脚本文件所在路径
+	get_path_script_files "$cluster_name"
+	# 获取游戏版本和版本对应获取buildid的flag
+	get_path_games "$cluster_name"
+	# 获取游戏官方开服脚本所在位置和名字
+	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
+	# 获取游戏版本
+	get_cluster_dst_game_version "$cluster_name"
+	#确认存档情况
+	get_cluster_flag "$cluster_name"
+	# 获取mod自动更新配置文件位置
+	get_dedicated_server_mods_setup "$cluster_name"
+	# 获取存档路径和主要存档，地上优先于地下，主要是用于控制台指令的选择
+	get_cluster_main "$cluster_name"
+	# 获取存档进程名
+	get_process_name  "$cluster_name"
+	#获取日志文件路径
+	get_path_server_log  "$cluster_name"
+	# 获取存档的日志路径
+	get_path_server_log "$cluster_name"
+	# 获取进程名（判断是否有开启）
+	get_process_name "$cluster_name"
+	# 通过版本号获取参数
+	init_getByVersion  "$cluster_name"
+	# 通过存档情况获得主要采用的存档
+	init_get_cluster_main "$cluster_name"
+	# 获取当前存档的世界分布情况
+	get_cluster_flag "$cluster_name"
+	# 保存独立存档mod文件的位置
+	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+	# 获取mod所在目录
+	modoverrides_path=$cluster_main/modoverrides.lua
+	# 判断是否成功开启存档的标志
+	check_flag=0
+}
+
+
+
+
+# 获取存档所在路径
+get_path_cluster(){
+	cluster_name=$1
+	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
+}
+
+# 脚本文件所在路径
+get_path_script_files(){
+	cluster_name=$1
+	get_path_cluster "$cluster_name"
+	script_files_path="$cluster_path/ScriptFiles"
+	# 判断是否存在这个文件夹，不存在就创建
+	if [ ! -d "$script_files_path" ]; then
+		mkdir "$script_files_path"
+	fi
+	# 删除旧版本脚本残余文件
+	if [ -f "$script_files_path/gameversion.txt" ];then
+		rm -rf "$script_files_path/gameversion.txt"
+	fi
+}
+
+# 获取游戏版本和版本对应获取buildid的flag
+get_path_games(){
+	cluster_name=$1
+	get_path_script_files "$cluster_name"
+	if [[ $(grep --text -c "正式版" "$script_files_path/config.txt") -gt 0 ]]; then
+		gamesPath="$DST_DEFAULT_PATH"
+		buildid_version_flag="public"
+	else
+		gamesPath="$DST_DEFAULT_PATH_BETA"
+		buildid_version_flag="updatebeta"
+	fi
+}
+
+# 获取游戏官方开服脚本所在位置和名字
+get_path_dontstarve_dedicated_server_nullrenderer(){
+	cluster_name=$1
+	get_path_games "$cluster_name"
+	get_path_script_files "$cluster_name"
+	if [[ $(grep --text -c "32位" "$script_files_path/config.txt") -gt 0 ]]; then
+		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
+	else
+		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin64
+		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
+	fi
+}
+
+# 获取游戏版本
+get_cluster_dst_game_version(){
+	cluster_name=$1
+	get_path_script_files "$cluster_name"
+	cluster_dst_game_version=$(grep version "$script_files_path/config.txt" | awk '{print $3}')
+}
+
+
+
+#确认存档情况
+get_cluster_flag() {
+	cluster_name=$1
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		cluster_flag=4
+	else
+		cluster_flag=7
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		cluster_flag=$((cluster_flag - 3))
+	else
+		cluster_flag=$((cluster_flag - 2))
+	fi
+}
+
+# 获取mod自动更新配置文件位置
+get_dedicated_server_mods_setup(){
+	cluster_name=$1
+	get_path_games "$cluster_name"
+	dedicated_server_mods_setup="${gamesPath}"/mods/dedicated_server_mods_setup.lua
+}
+
+# 获取存档路径和主要存档，地上优先于地下，主要是用于控制台指令的选择
+get_cluster_main(){
+	cluster_name=$1
+	# 存档所在路径
+	get_path_cluster "$cluster_name"
+	# 地上存档的路径
+	master_saves_path="$cluster_path/Master"
+	# 地下存档的路径
+	caves_saves_path="$cluster_path/Caves"
+	if [ -d "$master_saves_path" ]; then
+		cluster_main="$master_saves_path"
+	else
+		cluster_main="$caves_saves_path"
+	fi
+}
+
+# 获取存档进程名
+get_process_name() {
+	cluster_name=$1
+	# 自动更新脚本的进程名
+	process_name_AutoUpdate="AutoUpdate $cluster_name"
+	# 获取游戏版本
+	get_cluster_dst_game_version "$cluster_name"
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
+			process_name_caves="DST_Caves $cluster_name"
+			process_name_main="DST_Caves $cluster_name"
+		else
+			process_name_caves="DST_Caves_beta $cluster_name"
+			process_name_main="DST_Caves_beta $cluster_name"
+		fi
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
+			process_name_master="DST_Master $cluster_name"
+			process_name_main="DST_Master $cluster_name"
+		else
+			process_name_master="DST_Master_beta $cluster_name"
+			process_name_main="DST_Master_beta $cluster_name"
+		fi
+	fi
+}
+
+#获取日志文件路径
+get_path_server_log() {
+	cluster_name=$1
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
+		server_log_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
+	fi
+	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
+		server_log_path_master="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
+	fi
+}
+
+# 配置文件
+setconfig(){
+	cluster_name=$1
+	if [ ! -f "$script_files_path/config.txt" ]; then
+		echo "version = 正式版32位" > "$script_files_path/config.txt"
+		echo "auto_update_anyway = true" >> "$script_files_path/config.txt"
+	fi
+}
+
+# 获取天数信息
+get_daysInfo() {
+	datatime=$(date +%s%3N)
+	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
+	sleep 1
+	presentday=$(grep --text "$server_log_path_main" -e "$datatime" | cut -d " " -f2 | tail -n +2)
+}
+
+
+
 
 #主菜单
 main() {
@@ -115,6 +324,7 @@ main() {
 console() {
 	cluster_name=$1
 	clear
+	
 	while :; do
 		echo "==============================请输入需要进行的操作序号=============================="
 		echo "                                                                                  "
@@ -147,7 +357,7 @@ console() {
 				echo "已复活全体玩家！"
 				;;
 			5)
-				get_playerList
+				get_playerList "$cluster_name"
 				;;
 			6)
 				get_server_save_path_master
@@ -162,7 +372,8 @@ console() {
 			esac)
 	done
 }
-# 无人时更新配置
+
+# 无人时更新的配置
 config_auto_update_anyway(){
 	if [ "$(grep --text auto_update_anyway  "$script_files_path/config.txt"  | awk '{print $3}')" == "true" ];then
 		echo "当前为直接更新，无论服务器有没有人"
@@ -185,89 +396,15 @@ config_auto_update_anyway(){
 		echo "已修改为仅在服务器有没人时更新"
 	else 
 		echo "输入有误，请重新输入"
-		config_auto_update_anyway
-	fi
-}
-# 通过版本号获取参数
-init_getByVersion() {
-	cluster_name=$1
-	# 存档所在路径
-	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
-	# 脚本文件所在文件夹
-	script_files_path="$cluster_path/ScriptFiles"
-	if [ ! -d "$script_files_path" ]; then
-		mkdir "$script_files_path"
-	fi
-	if [ -f "$script_files_path/gameversion.txt" ];then
-		rm -rf "$script_files_path/gameversion.txt"
-	fi
-	if [ ! -f "$script_files_path/config.txt" ]; then
-		echo "version = 正式版32位" > "$script_files_path/config.txt"
-		echo "auto_update_anyway = true" >> "$script_files_path/config.txt"
-	fi
-	cluster_dst_game_version=$(grep version "$script_files_path/config.txt" | awk '{print $3}')
-	# 获取存档开启方式flag
-	cluster_flag=$(get_cluster_flag "$cluster_name")
-	# 开启存档所需要的开启的应用名及其位置
-	if [[ $(grep --text -c "正式版" "$script_files_path/config.txt") -gt 0 ]]; then
-		gamesPath="$DST_DEFAULT_PATH"
-		buildid_version_flag="public"
-	else
-		gamesPath="$DST_DEFAULT_PATH_BETA"
-		buildid_version_flag="updatebeta"
-	fi
-	dedicated_server_mods_setup="${gamesPath}"/mods/dedicated_server_mods_setup.lua
-	
-	if [[ $(grep --text -c "32位" "$script_files_path/config.txt") -gt 0 ]]; then
-		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer"
-	else
-		dontstarve_dedicated_server_nullrenderer_path="${gamesPath}"/bin64
-		dontstarve_dedicated_server_nullrenderer="dontstarve_dedicated_server_nullrenderer_x64"
+		config_auto_update_anyway "$cluster_name"
 	fi
 }
 
-# 通过存档名获取参数
-init_get_cluster_main() {
-	cluster_name=$1
-	# 存档所在路径
-	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
-	# 地上存档的路径
-	master_saves_path="$cluster_path/Master"
-	# 地下存档的路径
-	caves_saves_path="$cluster_path/Caves"
-	if [ -d "$master_saves_path" ]; then
-		cluster_main="$master_saves_path"
-	else
-		cluster_main="$caves_saves_path"
-	fi
-}
 
 # 路径初始化（确认存档之后）
 init() {
 	cluster_name=$1
-	if [ "$cluster_name" == "" ]; then
-		return 0
-	fi
-	# 各个世界模组所在的位置
-	mods_path_master="$ugc_mods_path"/Master/content/322330
-	mods_path_caves="$ugc_mods_path"/Caves/content/322330
-	# 获取存档的日志路径
-	get_server_log_path "$cluster_name"
-	# 获取进程名（判断是否有开启）
-	get_process_name "$cluster_name"
-	# 通过版本号获取参数
-	init_getByVersion  "$cluster_name"
-	# 通过存档情况获得主要采用的存档
-	init_get_cluster_main "$cluster_name"
-	# 获取当前存档的世界分布情况
-	get_cluster_flag "$cluster_name"
-	# 保存独立存档mod文件的位置
-	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
-	# 获取mod所在目录
-	modoverrides_path=$cluster_main/modoverrides.lua
-	# 判断是否成功开启存档的标志
-	check_flag=0
+
 }
 
 # 选择开启方式
@@ -307,7 +444,6 @@ howtostart() {
 }
 # 开启服务器
 start_server() {
-	cluster_name=$1
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
@@ -365,8 +501,6 @@ start_server_select() {
 start_server_check() {
 	cluster_name=$1
 	start_time=$(date +%s)
-	get_server_log_path "$cluster_name"
-	init_getByVersion "$cluster_name"
 	if [[ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]]; then
 		start_server_check_select "地上" "$server_log_path_master"
 	fi
@@ -549,14 +683,12 @@ close_server() {
 	cluster_name=$1
 	close_flag=$2
 	check_player=$3
-	get_process_name "$cluster_name"
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
 		if [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ] ;then
 			close_server_autoUpdate "$cluster_name"
 		fi
-
 		# 进程名称符合就删除
 		while :; do
 			sleep 1
@@ -648,7 +780,7 @@ close_server_autoUpdate() {
 #查看游戏更新情况
 checkupdate() {
 	cluster_name=$1
-	init_getByVersion "$cluster_name"
+	get_path_games "$cluster_name"
 	# 保存buildid的位置
 	buildid_version_path="$gamesPath/bin/buildid.txt"
 	DST_now=$(date +%Y年%m月%d日%H:%M)
@@ -688,14 +820,13 @@ checkupdate() {
 # 查看游戏mod更新情况
 checkmodupdate() {
     cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
-    
     DST_now=$(date +%Y年%m月%d日%H:%M)
-    init_getByVersion "$cluster_name"
+    get_path_games "$cluster_name"
     get_cluster_flag "$cluster_name"
 
     # 保存独立存档mod文件的位置
     ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
-    get_server_log_path "$cluster_name"
+    get_path_server_log "$cluster_name"
 
     echo ""
     echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
@@ -704,7 +835,7 @@ checkmodupdate() {
     local has_mods_update=false
     case $cluster_flag in
         1|2) # 地上地下都有或者只有地上
-            ./$dontstarve_dedicated_server_nullrenderer \
+            ./"$dontstarve_dedicated_server_nullrenderer" \
                 -cluster "$cluster_name" \
                 -shard Master \
                 -only_update_server_mods \
@@ -716,7 +847,7 @@ checkmodupdate() {
             fi
             ;;
         4) # 只有地下
-            ./$dontstarve_dedicated_server_nullrenderer \
+            ./"$dontstarve_dedicated_server_nullrenderer" \
                 -cluster "$cluster_name" \
                 -shard Caves \
                 -only_update_server_mods \
@@ -757,7 +888,6 @@ checkmodupdate() {
 checkprocess() {
 	cluster_name=$1
 	flag_checkprocess=$2
-	init_get_cluster_main "$cluster_name"
 	if [ -d "$master_saves_path" ]; then
 		checkprocess_select "$cluster_name" "地上" "$flag_checkprocess"
 	fi
@@ -770,14 +900,7 @@ checkprocess_select() {
 	cluster_name=$1
 	world_check_flag=$2
 	flag_checkprocess=$3
-	# 获取存档的日志路径
-	get_server_log_path "$cluster_name"
-	# 通过版本号获取参数
-	init_getByVersion   "$cluster_name"
-	# 获取进程名
-	get_process_name    "$cluster_name"
 	log_path=$server_log_path_main
-
 	if [ "$world_check_flag" == "地上" ]; then
 		script_name="start_server_master.sh"
 		process_name_check=$process_name_master
@@ -789,18 +912,18 @@ checkprocess_select() {
 	if [[ $(screen -ls | grep --text -c "\<$process_name_check\>") -eq 1 ]]; then
 		if [[ "$flag_checkprocess" != "no_output" ]]
 		then
-			echo "$world_check_flag服务器运行正常"
+			echo "$world_check_flag 服务器运行正常"
 		fi
 	else
-		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
-		start_server_select "$cluster_name" "\<$process_name_check\>" "$script_name" -AUTO
+		echo "$world_check_flag 服务器已经关闭,自动开启中。。。"
+		start_server_select "$cluster_name" "$process_name_check" "$script_name" -AUTO
 		start_server_check_select "$world_check_flag" "$log_path"  -AUTO
 	fi
 
 	if [[ $(grep --text "Failed to send server broadcast message" -c "${log_path}") -gt 0 ]] || [[ $(grep --text "Failed to send server listings" -c "${log_path}") -gt 0 ]]; then
 		get_playerList "$cluster_name"
 		if [ "$have_player" == false ]; then
-			c_announce="【$world_check_flag】Failed to send server broadcast message或者Failed to send server listings,网络有点问题，且当前服务器没人，服务器需要重启,给您带来的不便还请谅解！！！"
+			c_announce="Failed to send server broadcast message或者Failed to send server listings,网络有点问题，且当前服务器没人，服务器需要重启,给您带来的不便还请谅解！！！"
 			restart_server "$cluster_name" -AUTO
 		fi
 	fi
@@ -918,6 +1041,9 @@ auto_update() {
 list_all_mod() {
 	tput setaf 2
 	clear
+	# 各个世界模组所在的位置
+	mods_path_master="$ugc_mods_path"/Master/content/322330
+	mods_path_caves="$ugc_mods_path"/Caves/content/322330
 	show=true
 	if [ -d "$mods_path_master" ]; then
 		mods_path=$mods_path_master
@@ -952,73 +1078,6 @@ list_all_mod() {
 		printf '=%.0s' {1..80}
 	fi
 }
-# 获取天数信息
-get_daysInfo() {
-	cluster_name=$1
-	get_process_name "$cluster_name"
-	datatime=$(date +%s%3N)
-	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
-	sleep 1
-	presentday=$(grep --text "$server_log_path_main" -e "$datatime" | cut -d " " -f2 | tail -n +2)
-}
-# 存档进程
-get_process_name() {
-	cluster_name=$1
-	process_name_caves="无"
-	process_name_master="无"
-	process_name_AutoUpdate="AutoUpdate $cluster_name"
-	process_name_main="无"
-	init_getByVersion "$cluster_name"
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
-		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
-			process_name_caves="DST_Caves $cluster_name"
-			process_name_main="DST_Caves $cluster_name"
-		else
-			process_name_caves="DST_Caves_beta $cluster_name"
-			process_name_main="DST_Caves_beta $cluster_name"
-		fi
-	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
-		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
-			process_name_master="DST_Master $cluster_name"
-			process_name_main="DST_Master $cluster_name"
-		else
-			process_name_master="DST_Master_beta $cluster_name"
-			process_name_main="DST_Master_beta $cluster_name"
-		fi
-	fi
-}
-
-# # 存档
-# get_cluster_name() {
-# 	if [ ! -d "${DST_SAVE_PATH}" ]; then
-# 		mkdir "$HOME"/.klei
-# 		cd "$HOME"/.klei || exit
-# 		mkdir "${DST_SAVE_PATH}"
-# 	fi
-# 	printf '=%.0s' {1..26}
-# 	echo -e "存档目录\c"
-# 	printf '=%.0s' {1..26}
-# 	echo ""
-# 	echo ""
-# 	cd "${DST_SAVE_PATH}" || exit
-# 	ls
-# 	cd "$HOME" || exit
-# 	echo ""
-# 	printf '=%.0s' {1..60}
-# 	echo ""
-# 	echo "请输入存档代码:"
-# 	read -r cluster_name
-# 	if [ "$cluster_name" == "" ]; then
-# 		echo "存档名输入有误！"
-# 		main
-# 	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
-# 		echo "存档不存在！"
-# 		main
-# 	else
-# 		init "$cluster_name"
-# 	fi
-# }
 
 # 存档
 get_cluster_name() {
@@ -1048,7 +1107,8 @@ get_cluster_name() {
 		echo "存档不存在！"
 		main
 	else
-		init "$cluster_name"
+		init_by_cluster_name "$cluster_name" 
+		setconfig  "$cluster_name"
 	fi
 }
 
@@ -1076,18 +1136,14 @@ get_cluster_name_processing() {
 		echo "存档不存在！"
 		main
 	else
-		init "$cluster_name"
+		init_by_cluster_name "$cluster_name" 
+		setconfig  "$cluster_name"
 	fi
 }
 
 # 获取玩家列表
 get_playerList() {
-	get_process_name    "$cluster_name"
-	get_server_log_path "$cluster_name"
-	# 存档所在路径
-	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
-	# 脚本文件所在文件夹
-	script_files_path="$cluster_path/ScriptFiles"
+	cluster_name=$1
 	if [[ $(screen -ls | grep --text -c "\<$process_name_main\>") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
@@ -1121,11 +1177,10 @@ get_playerList() {
 
 # 服务器信息
 serverinfo() {
-
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
 	getworldstate
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
-	get_playerList
+	get_playerList 
 	getmonster
 	if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
@@ -1400,6 +1455,7 @@ prepare() {
 # 切换游戏版本
 change_game_version() {
 	cluster_name=$1
+	# 打印游戏版本选择菜单
 	echo "###########################"
 	echo "##### 请选择游戏版本: #####"
 	echo "#      1.正式版32位       #"
@@ -1409,51 +1465,25 @@ change_game_version() {
 	echo "###########################"
 	echo "输入数字序号即可,如:1 "
 	read -r game_version
-	game_version_now=$(grep --text version  "$script_files_path/config.txt" | awk '{print $3}')
+	# 获取当前游戏版本
+	game_version_now=$(grep --text version "$script_files_path/config.txt" | awk '{print $3}')
+	# 根据用户输入修改游戏版本，并打印提示信息
 	if [ "$game_version" == "1" ]; then
 		echo "更改该存档服务端版本为正式版32位!"
-		sed -i "1s/${game_version_now}/正式版32位/g"  "$script_files_path/config.txt"
+		sed -i "1s/${game_version_now}/正式版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "2" ]; then
 		echo "更改该存档服务端版本为正式版64位!"
-		sed -i "1s/${game_version_now}/正式版64位/g"  "$script_files_path/config.txt"
+		sed -i "1s/${game_version_now}/正式版64位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "3" ]; then
 		echo "更改该存档服务端版本为测试版32位!"
-		sed -i "1s/${game_version_now}/测试版32位/g"  "$script_files_path/config.txt"
+		sed -i "1s/${game_version_now}/测试版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
 		echo "更改该存档服务端版本为测试版64位!"
-		sed -i "1s/${game_version_now}/测试版64位/g"  "$script_files_path/config.txt"
+		sed -i "1s/${game_version_now}/测试版64位/g" "$script_files_path/config.txt"
 	else
+		# 如果用户输入的序号无效，则提示用户重新输入
 		echo "输入有误,请重新输入"
 		change_game_version
-	fi
-}
-
-#确认存档情况
-get_cluster_flag() {
-	cluster_name=$1
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
-		cluster_flag=4
-	else
-		cluster_flag=7
-	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
-		cluster_flag=$((cluster_flag - 3))
-	else
-		cluster_flag=$((cluster_flag - 2))
-	fi
-	return $cluster_flag
-}
-
-# 日志文件路径
-get_server_log_path() {
-	cluster_name=$1
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
-		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
-		server_log_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
-	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
-		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
-		server_log_path_master="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
 	fi
 }
 
