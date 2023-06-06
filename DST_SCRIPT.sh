@@ -671,7 +671,7 @@ close_server() {
 			sleep 1
 			if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 				close_server_select "$process_name_master" "地上" "$close_flag" "$check_player" 
-			elif [[ $(screen -ls | grep --text -c "$process_name_caves") -gt 0 ]]; then
+			elif [[ $(screen -ls | grep --text -c "\<$process_name_caves\>") -gt 0  ]]; then
 				close_server_select "$process_name_caves" "地下" "$close_flag"  "$check_player" 
 			else
 				echo -e "\r\e[92m进程 $cluster_name 已关闭!!!                   \e[0m "
@@ -1091,16 +1091,13 @@ get_cluster_name() {
 
 # 显示存档进程名
 get_cluster_name_processing() {
-	printf '=%.0s' {1..12}
-	echo -e "请确保要关闭的存档版本和当前脚本版本一致(不区分位数)\c"
-	printf '=%.0s' {1..12}
-	echo ""
+	printf '=%.0s' {1..80}
 	echo ""
 	sessions=$(screen -ls | grep Detached | cat -n | awk '{printf "%s\n", $3}' | uniq | cat -n | awk '{printf "%-4s%s\n", $1, $2}')
 	echo "$sessions"
 	echo ""
 	printf '=%.0s' {1..28}
-	echo -e "请输入要关闭的存档的序号\c"
+	echo -e "请输入要选择的存档的序号\c"
 	printf '=%.0s' {1..28}
 	echo ""
 	read -r folder_number
