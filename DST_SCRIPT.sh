@@ -30,7 +30,7 @@
 # 2023/04/16 修复开启存档时出现存档崩溃卡在检测开启的阶段的bug
 # 2023/04/17 修改一部分ui，更方便选择，直接输入数字即可
 # 2023/06/05 给代码归类，加注释，方便查阅更改，统一初始化，不再独立初始化
-
+# 2023/06/10 修复自动更新mod模块的路径获取失败的问题
 
 ##常量区域
 
@@ -797,17 +797,14 @@ checkupdate() {
 checkmodupdate() {
     cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
     DST_now=$(date +%Y年%m月%d日%H:%M)
-    get_path_games "$cluster_name"
+	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
     get_cluster_flag "$cluster_name"
-
+    get_path_server_log "$cluster_name"
     # 保存独立存档mod文件的位置
     ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
-    get_path_server_log "$cluster_name"
-
-    echo ""
     echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
     cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
-
+	echo " "
     local has_mods_update=false
     case $cluster_flag in
         1|2) # 地上地下都有或者只有地上
