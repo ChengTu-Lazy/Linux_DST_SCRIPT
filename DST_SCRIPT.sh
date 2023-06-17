@@ -31,6 +31,7 @@
 # 2023/04/17 修改一部分ui，更方便选择，直接输入数字即可
 # 2023/06/05 给代码归类，加注释，方便查阅更改，统一初始化，不再独立初始化
 # 2023/06/10 修复自动更新mod模块的路径获取失败的问题
+# 2023/06/17 修复所有API方法不能正确使用的bug
 
 ##常量区域
 
@@ -42,7 +43,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.3"
+script_version="1.7.4"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -123,7 +124,7 @@ get_path_games(){
 		gamesPath="$DST_DEFAULT_PATH"
 		buildid_version_flag="public"
 	else
-		gamesPath="$DST_DEFAULT_PATH_BETA"
+		gamesPath="$DST_BETA_PATH"
 		buildid_version_flag="updatebeta"
 	fi
 }
@@ -278,6 +279,8 @@ howtostart() {
 	cluster_name=$1
 	check_player=$3
 	addmod "$cluster_name"
+	get_cluster_flag "$cluster_name"
+	get_process_name "$cluster_name"
 	(case $cluster_flag in
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
 		1)
@@ -312,11 +315,13 @@ start_server_select() {
 	cluster_name=$1
 	process_name_select=$2
 	script_start_server=$3
+	get_path_games "$cluster_name"
 	if [ "$script_start_server" == "start_server_master.sh" ]; then
 		shard_name="Master"
 	else
 		shard_name="Caves"
 	fi
+	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
 	echo "#!/bin/bash
 	cd \"$dontstarve_dedicated_server_nullrenderer_path\" || exit
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
@@ -333,6 +338,8 @@ start_server_select() {
 start_server_check() {
 	cluster_name=$1
 	start_time=$(date +%s)
+	get_process_name "$cluster_name"
+	get_path_server_log "$cluster_name"
 	if [[ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]]; then
 		start_server_check_select "地上" "$server_log_path_master"
 	fi
@@ -355,36 +362,17 @@ start_server_check() {
 }
 
 # 判断是否成功开启
+# 1代表需要执行，0代表执行完毕
 start_server_check_select() {
 	w_flag=$1
 	logpath_flag=$2
 	auto_flag=$3
 	mod_flag=1
 	download_flag=1
-	check_flag=0
+	check_flag=1
+	# 该进程存在时才进行判定
 	while :; do
-		checkprocess "$cluster_name" "no_output"
-		if [ "$check_flag" == 0 ] && [ $mod_flag == 0 ]; then
-			echo -en "\r$w_flag服务器开启中,请稍后.                              "
-			sleep 1
-			echo -en "\r$w_flag服务器开启中,请稍后..                             "
-			sleep 1
-			echo -en "\r$w_flag服务器开启中,请稍后...                            "
-			sleep 1
-		fi
-		if [ $mod_flag == 1 ] && [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -eq 0 ]] && [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -eq 0 ]]; then
-			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后.                    "
-			sleep 1
-			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后..                   "
-			sleep 1
-			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后...                  "
-			sleep 1
-		fi
-		if [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -gt 0 ]] || [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
-			echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
-			mod_flag=0
-			download_flag=0
-		elif [[ $(grep --text "[Workshop] OnDownloadPublishedFile" -c "$logpath_flag") -gt 0 ]] && [ $download_flag == 1 ]; then
+		if [ $mod_flag == 1 ] && [[ $(grep --text "[Workshop] OnDownloadPublishedFile" -c "$logpath_flag") -gt 0 ]] && [ $download_flag == 1 ]; then
 			sleep 1
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后.                         "
 			sleep 1
@@ -392,13 +380,41 @@ start_server_check_select() {
 			sleep 1
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后...                       "
 			sleep 1
+		elif  [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -gt 0 ]] || [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
+			echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
+			mod_flag=0
+			download_flag=0
 		fi
-		if [[ $(grep --text "Sim paused" -c "$logpath_flag") -gt 0 || $(grep --text "shard LUA is now ready!" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 0 ] && [ $download_flag == 0 ] && [ "$check_flag" == 0 ]; then
+
+		# 检查有没有下载完成
+		if [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -eq 0 ]] && [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -eq 0 ]]; then
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后.                    "
+			sleep 1
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后..                   "
+			sleep 1
+			echo -en "\r正在检测$w_flag服务器mod是否完成下载,请稍后...                  "
+			sleep 1
+		fi
+
+		# 完成mod检测之后检测服务器有没有开启
+		if [ "$check_flag" == 1 ] && [ $mod_flag == 0 ]; then
+			echo -en "\r$w_flag服务器开启中,请稍后.                              "
+			sleep 1
+			echo -en "\r$w_flag服务器开启中,请稍后..                             "
+			sleep 1
+			echo -en "\r$w_flag服务器开启中,请稍后...                            "
+			sleep 1
+			
+		fi
+
+		# mod检测和下载完成，服务器检测未完成
+		if [[ $(grep --text "Sim paused" -c "$logpath_flag") -gt 0 || $(grep --text "shard LUA is now ready!" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 0 ] && [ $download_flag == 0 ] && [ "$check_flag" == 1 ]; then
 			echo -e "\r\e[92m$w_flag服务器开启成功!!!                          \e[0m"
 			sleep 1
-			check_flag=1
+			check_flag=0
 			return 1
 		fi
+
 		if [[ $(grep --text "Your Server Will Not Start !!!" -c "$logpath_flag") -gt 0 ]]; then
 			echo -e "\r\e[1;31m$w_flag服务器开启未成功,请注意令牌是否成功设置且有效。也可能是klei网络问题,那就不用管。稍后会自动重启该存档。\e[0m"
 			close_server "$cluster_name" "$auto_flag"
@@ -468,6 +484,8 @@ start_server_check_fix() {
 addmod() {
 	cluster_name=$1
 	# mod所在目录
+	get_cluster_main "$cluster_name"
+	get_dedicated_server_mods_setup "$cluster_name"
 	modoverrides_path=$cluster_main/modoverrides.lua
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
@@ -491,10 +509,10 @@ addmod() {
 #主菜单
 main() {
 	tput setaf 2
-	echo "============================================================"
-	printf "%s\n" "                     脚本版本:${script_version}                            "
-	echo "============================================================"
 	while :; do
+		echo "============================================================"
+		printf "%s\n" "                     脚本版本:${script_version}                            "
+		echo "============================================================"
 		echo "                                          	             "
 		echo "  [1]重新载入脚本       [2]启动服务器     [3]关闭饥荒服务器 "
 		echo "                                          	             "
@@ -660,6 +678,7 @@ close_server() {
 	cluster_name=$1
 	close_flag=$2
 	check_player=$3
+	get_process_name "$cluster_name"
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
@@ -861,6 +880,7 @@ checkmodupdate() {
 checkprocess() {
 	cluster_name=$1
 	flag_checkprocess=$2
+	get_cluster_main "$cluster_name"
 	if [ -d "$master_saves_path" ]; then
 		checkprocess_select "$cluster_name" "地上" "$flag_checkprocess"
 	fi
@@ -873,22 +893,26 @@ checkprocess_select() {
 	cluster_name=$1
 	world_check_flag=$2
 	flag_checkprocess=$3
+	get_path_server_log "$cluster_name"
+	get_process_name "$cluster_name"
 	log_path=$server_log_path_main
 	if [ "$world_check_flag" == "地上" ]; then
 		script_name="start_server_master.sh"
 		process_name_check=$process_name_master
+		log_path=$server_log_path_master
 	else
 		script_name="start_server_caves.sh"
 		process_name_check=$process_name_caves
+		log_path=$server_log_path_caves
 	fi
 
 	if [[ $(screen -ls | grep --text -c "\<$process_name_check\>") -eq 1 ]]; then
 		if [[ "$flag_checkprocess" != "no_output" ]]
 		then
-			echo "$world_check_flag 服务器运行正常"
+			echo "$world_check_flag服务器运行正常"
 		fi
 	else
-		echo "$world_check_flag 服务器已经关闭,自动开启中。。。"
+		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
 		start_server_select "$cluster_name" "$process_name_check" "$script_name" -AUTO
 		start_server_check_select "$world_check_flag" "$log_path"  -AUTO
 	fi
@@ -1090,6 +1114,7 @@ get_cluster_name() {
 get_cluster_name_processing() {
 	printf '=%.0s' {1..80}
 	echo ""
+	echo ""
 	sessions=$(screen -ls | grep Detached | cat -n | awk '{printf "%s\n", $3}' | uniq | cat -n | awk '{printf "%-4s%s\n", $1, $2}')
 	echo "$sessions"
 	echo ""
@@ -1114,6 +1139,9 @@ get_cluster_name_processing() {
 # 获取玩家列表
 get_playerList() {
 	cluster_name=$1
+	echo "当前查询存档：$1"
+	get_process_name "$cluster_name"
+	get_path_server_log "$cluster_name"
 	if [[ $(screen -ls | grep --text -c "\<$process_name_main\>") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
@@ -1148,10 +1176,10 @@ get_playerList() {
 # 服务器信息
 serverinfo() {
 	echo -e "\e[92m=============================世界信息==========================================\e[0m"
-	getworldstate
+	getworldstate 
 	echo -e "\e[33m 天数($presentcycles)($presentseason的第$presentday天)($presentphase/$presentmoonphase/$presentrain/$presentsnow/$presenttemperature°C)\e[0m"
-	get_playerList 
-	getmonster
+	get_playerList "$cluster_name"
+	getmonster 
 	if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
 		echo "===========================地上世界信息========================================"
 		echo -e "\e[33m海象巢:($walrus_camp_master)个  触手怪:($tentacle_master)个  蜘蛛巢:($spiderden_master)个\e[0m"
@@ -1202,6 +1230,12 @@ getmonster() {
 		spiderden_1_master=$(grep --text "$server_log_path_master" -e "spiderdens in the world." | awk '{print $4}')
 		spiderden_2_master=$(grep --text "$server_log_path_master" -e "spiderden_2s in the world." | awk '{print $4}')
 		spiderden_3_master=$(grep --text "$server_log_path_master" -e "spiderden_3s in the world." | awk '{print $4}')
+
+		# 如果某个变量无法解析出数值，则将其视为零
+		if ! [[ "$spiderden_1_master" =~ ^[0-9]+$ ]]; then spiderden_1_master=0; fi
+		if ! [[ "$spiderden_2_master" =~ ^[0-9]+$ ]]; then spiderden_2_master=0; fi
+		if ! [[ "$spiderden_3_master" =~ ^[0-9]+$ ]]; then spiderden_3_master=0; fi
+
 		spiderden_master=$((spiderden_1_master + spiderden_2_master + spiderden_3_master))
 		mudi_master=$((mound_master + gravestone_master))
 		echo 
@@ -1230,10 +1264,17 @@ getmonster() {
 		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | awk '{print $4}')
 		spiderden_2_caves=$(grep --text "$server_log_path_caves" -e "spiderden_2s in the world." | awk '{print $4}')
 		spiderden_3_caves=$(grep --text "$server_log_path_caves" -e "spiderden_3s in the world." | awk '{print $4}')
+
+		# 如果某个变量无法解析出数值，则将其视为零
+		if ! [[ "$spiderden_1_caves" =~ ^[0-9]+$ ]]; then spiderden_1_caves=0; fi
+		if ! [[ "$spiderden_2_caves" =~ ^[0-9]+$ ]]; then spiderden_2_caves=0; fi
+		if ! [[ "$spiderden_3_caves" =~ ^[0-9]+$ ]]; then spiderden_3_caves=0; fi
+
+		spiderden_caves=$((spiderden_1_caves + spiderden_2_caves + spiderden_3_caves))
 		bishop_nightmare=$(grep --text "$server_log_path_caves" -e "bishop_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		rook_nightmare=$(grep --text "$server_log_path_caves" -e "rook_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		knight_nightmare=$(grep --text "$server_log_path_caves" -e "knight_nightmares in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_caves=$((spiderden_1_caves + spiderden_2_caves + spiderden_3_caves))
+
 	fi
 }
 
@@ -1406,7 +1447,7 @@ prepare() {
 	if [ ! -d "./steamcmd" ] || [ ! -d "./DST" ] || [ ! -d "./DST_BETA" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
 		PreLibrary
 		mkdir "$DST_DEFAULT_PATH"
-		mkdir "$DST_DEFAULT_PATH_BETA"
+		mkdir "$DST_BETA_PATH"
 		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
@@ -1544,8 +1585,6 @@ elif [ "$1" == "-checkupdate" ]; then
 	checkupdate "$2"
 elif [ "$1" == "-checkmodupdate" ]; then
 	checkmodupdate "$2"
-elif [ "$1" == "-get_playerList" ]; then
-	get_playerList "$2"
 elif [ "$1" == "" ] && [ "$2" == "" ]; then
 	prepare
 	clear
