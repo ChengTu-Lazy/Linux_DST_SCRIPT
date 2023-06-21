@@ -35,7 +35,9 @@
 
 ##常量区域
 
-#测试版token
+# 作者提供的Token
+Token="pds-g^KU_iC59_53i^ByQO7jK+mAPCqmyfQEo5eONht2EL6pCSKjz+1kFA2fI="
+#测试版Token
 BETA_TOKEN="returnofthembeta"
 # 饥荒存档位置
 DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
@@ -258,7 +260,7 @@ start_server() {
 					echo "请输入 Y/y 同意 或者 N/n 拒绝并自己提供一个"
 					read -r token_yes
 					if [ "$token_yes" == "Y" ] || [ "$token_yes" == "y" ]; then
-						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" >"cluster_token.txt"
+						echo "$Token" >"cluster_token.txt"
 					elif [ "$token_yes" == "N" ] || [ "$token_yes" == "N" ]; then
 						read -r token_no
 						echo "$token_no" >"cluster_token.txt"
