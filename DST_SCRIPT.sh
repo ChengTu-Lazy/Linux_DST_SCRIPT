@@ -1585,11 +1585,11 @@ get_latest_version() {
 		echo "输入有误,请重新输入"
 		get_latest_version
 	fi
-	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$script_path/""$script_name"""
+	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$script_path/$SCRIPT_NAME"
 	cd "$script_path" || exit
 	rm -rf "$HOME/clone_tamp"
 	clear
-	bash "$script_path"/"$script_name"
+	bash "$script_path"/"$SCRIPT_NAME"
 }
 
 # API
