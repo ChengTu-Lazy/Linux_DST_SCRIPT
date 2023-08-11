@@ -33,19 +33,21 @@
 # 2023/06/10 修复自动更新mod模块的路径获取失败的问题
 # 2023/06/17 修复所有API方法不能正确使用的bug
 # 2023/08/04 修复仅在无人时更新不能正常使用的bug，现在仅默认下载正式版，测试版仅在用户选择使用测试版开服时才检测下载
-
+# 2023/08/11 更新默认的Token，修复仅在无人时更新不能正常使用的bug
 
 ##常量区域
 
 #测试版token
 BETA_TOKEN="returnofthembeta"
+# 作者提供的Token
+GAME_TOKEN="pds-g^KU_iC59_53i^mrG/fM8RM3RctBmgouiK4lITydtUUbIHN30ze43MnBk="
 # 饥荒存档位置
 DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 # 默认游戏路径
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.5"
+script_version="1.7.6"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -251,6 +253,8 @@ start_server() {
 		elif [ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]; then
 			echo "该服务器已开启地上服务器,请先关闭再启动！！"
 		else
+			# 判断ScriptFiles文件夹
+			get_path_script_files "$cluster_name"
 			# 判断是否有token文件
 			cd "${DST_SAVE_PATH}/$cluster_name" || exit
 			if [ ! -e "cluster_token.txt" ]; then
@@ -259,7 +263,7 @@ start_server() {
 					echo "请输入 Y/y 同意 或者 N/n 拒绝并自己提供一个"
 					read -r token_yes
 					if [ "$token_yes" == "Y" ] || [ "$token_yes" == "y" ]; then
-						echo "pds-g^KU_iC59_53i^+AGkfKRdMm8uq3FSa08/76lKK1YA8r0qM0iMoIb6Xx4=" >"cluster_token.txt"
+						echo $GAME_TOKEN >"cluster_token.txt"
 					elif [ "$token_yes" == "N" ] || [ "$token_yes" == "N" ]; then
 						read -r token_no
 						echo "$token_no" >"cluster_token.txt"
@@ -717,7 +721,7 @@ close_server_select() {
 			player_flag="true"
 		fi
 	fi
-	if [[ "$player_flag" == "false" ]] || [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ]; then
+	if [[ $player_flag == "false" ]] || [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ]; then
 		if [ "$close_flag" == "-close" ]; then
 			c_announce="服务器即将关闭，给您带来的不便还请谅解！！！"
 		elif [ "$close_flag" == "" ]; then
@@ -787,6 +791,7 @@ checkupdate() {
 	echo "正在获取最新buildid。。。"
 	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
 	#查看buildid是否一致
+	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
 		echo " "
 		echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
@@ -803,6 +808,7 @@ checkupdate() {
 			fi
 		fi
 		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+		c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
 		if [ "$auto_update_anyway" == "true" ]; then
 			# 重启该存档，但不关闭当前进程
 			restart_server "$cluster_name" -AUTO
@@ -813,6 +819,8 @@ checkupdate() {
 		echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
 	fi
 }
+
+
 
 # 查看游戏mod更新情况
 checkmodupdate() {
@@ -859,12 +867,13 @@ checkmodupdate() {
 	fi
 
 	if $has_mods_update; then
+		get_path_script_files "$cluster_name"
+		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+		echo ""
+		echo -e "\e[31m${DST_now}: Mod 有更新！\e[0m"
+		echo ""
 		if [[ "$auto_update_anyway" == "true" ]]; then
 			# 重启该存档，但不关闭当前进程
-			echo ""
-			echo -e "\e[31m${DST_now}: Mod 有更新！\e[0m"
-			echo ""
-
 			c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
 			restart_server "$cluster_name" -AUTO
 		else
