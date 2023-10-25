@@ -34,6 +34,7 @@
 # 2023/06/17 修复所有API方法不能正确使用的bug
 # 2023/08/04 修复仅在无人时更新不能正常使用的bug，现在仅默认下载正式版，测试版仅在用户选择使用测试版开服时才检测下载
 # 2023/08/11 更新默认的Token，修复仅在无人时更新不能正常使用的bug
+# 2023/10/25 修复开启新的存档会显示文件不存在的问题，修复自动加载mod不正常的问题
 
 ##常量区域
 
@@ -47,7 +48,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.6"
+script_version="1.7.7"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -66,6 +67,7 @@ init() {
 		return 0
 	fi
 	# 获取存档所在路径
+	get_path_script_files "$cluster_name"
 	get_path_cluster "$cluster_name"
 	# 脚本文件所在路径
 	get_path_script_files "$cluster_name"
@@ -113,6 +115,7 @@ get_path_script_files() {
 	# 判断是否存在这个文件夹，不存在就创建
 	if [ ! -d "$script_files_path" ]; then
 		mkdir "$script_files_path"
+		setconfig "$cluster_name"
 	fi
 	# 删除旧版本脚本残余文件
 	if [ -f "$script_files_path/gameversion.txt" ]; then
@@ -248,6 +251,7 @@ start_server() {
 	if [ "$cluster_name" == "" ]; then
 		main
 	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+		
 		if [ "$(screen -ls | grep --text -c "\<$process_name_caves\>")" -gt 0 ]; then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
 		elif [ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]; then
@@ -455,6 +459,7 @@ start_server_check_fix() {
 		echo "# 加载 Ubuntu Linux 环境 #"
 		echo "##########################"
 		echo ""
+		sudo apt-get -y update
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libcurl3-gnutls:i386
@@ -501,7 +506,6 @@ addmod() {
 		sleep 0.1
 		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
 			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
-			echo "ServerModCollectionSetup(\"$line\")" >>"$dedicated_server_mods_setup"
 			sleep 0.05
 			echo -e "\e[92m$line Mod添加完成\e[0m"
 		done
@@ -1107,6 +1111,8 @@ get_cluster_name() {
 	echo "===================================="
 	read -r folder_number
 	cluster_name=$(echo "$folders" | awk '{if($1 == '"$folder_number"') print $2}')
+	# 判断ScriptFiles文件夹
+	get_path_script_files "$cluster_name"
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
