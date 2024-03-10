@@ -710,16 +710,18 @@ restart_server() {
 	close_server "$cluster_name" "$auto_flag" "$check_player"
 	howtostart "$cluster_name" "$auto_flag" "$check_player"
 }
+
 # 更新游戏
 update_game() {
 	version_flag=$1
+	cd "$HOME/steamcmd" || exit
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
 	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
-		steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	else
 		echo "同步最新测试版版游戏本体内容中。。。"
-		steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+		./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 	fi
 }
 
@@ -832,7 +834,8 @@ checkupdate() {
 	# 判断一下对应开启的版本
 	# 获取最新buildid
 	echo "正在获取最新buildid。。。"
-	steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	cd "$HOME"/steamcmd || exit
+	./steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -1441,17 +1444,21 @@ PreLibrary() {
 		echo "# 加载 Ubuntu Linux 环境 #"
 		echo "##########################"
 		echo ""
-				
-		if [ "$(uname -m)" = "x86_64" ]; then
-			sudo add-apt-repository multiverse
-			sudo dpkg --add-architecture i386
-			sudo apt update
-			sudo apt install lib32gcc1 steamcmd 
-		fi
+		sudo apt-get -y clean
+		sudo apt-get -y update
+		sudo apt-get -y wget
 
-		if [ "$(which steamcmd)" != "/usr/games/steamcmd" ]; then
-			sudo apt install steamcmd
-		fi
+		sudo apt-get -y install libstdc++6
+		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libc6-i386
+		sudo apt-get -y install libcurl4-gnutls-dev:i386
+		sudo apt-get -y install libcurl3-gnutls:i386
+		sudo dpkg --add-architecture i386
+
+		sudo apt-get -y install lib64gcc1
+		sudo apt-get -y install lib32gcc1
+
+		sudo apt-get -y install libcurl4-gnutls-dev
 
 		#一些必备工具
 		sudo apt-get -y install screen
@@ -1460,6 +1467,12 @@ PreLibrary() {
 		sudo apt-get -y install zip unzip
 		sudo apt-get -y install git
 
+		if [ -f "/usr/lib/libcurl.so.4" ]; then
+			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
+		fi
+		if [ -f "/usr/lib64/libcurl.so.4" ]; then
+			ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
+		fi
 
 	elif
 		[ "$os" == "CentOS" ]
@@ -1506,6 +1519,7 @@ PreLibrary() {
 	fi
 }
 
+
 #前期准备
 prepare() {
 	cd "$HOME" || exit
@@ -1516,23 +1530,31 @@ prepare() {
 	if [ -d "./dst_beta" ]; then
 		mv dst_beta/ DST_BETA/
 	fi
-	if [ "$(which steamcmd)" != "/usr/games/steamcmd" ]; then
-		echo "新脚本的steamcmd获取方式已更改，正在重新安装steamcmd"
-		PreLibrary
-	fi
-	if [ ! -d "./DST" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
+	if [ ! -d "./steamcmd" ] || [ ! -d "./DST" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
 		PreLibrary
 		mkdir "$DST_DEFAULT_PATH"
+		
+		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
 		mkdir "${DST_SAVE_PATH}"
+		cd "$HOME/steamcmd" || exit
+		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+		tar -xvzf steamcmd_linux.tar.gz
+		sleep 1
+		rm -f steamcmd_linux.tar.gz
 	fi
 	# 下载游戏本体
 	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
 		echo "正在下载饥荒游戏本体！！！"
-		steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		cd "$HOME/steamcmd" || exit
+		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	fi
-	
+	# if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
+	# 	echo "正在下载饥荒测试版游戏本体！！！"
+	# 	cd "$HOME/steamcmd" || exit
+	# 	./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+	# fi
 }
 
 # 切换游戏版本
@@ -1564,7 +1586,8 @@ change_game_version() {
 		fi 
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
@@ -1574,7 +1597,8 @@ change_game_version() {
 		fi 
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			cd "$HOME/steamcmd" || exit
+			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版64位/g" "$script_files_path/config.txt"
 	else
