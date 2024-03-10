@@ -34,7 +34,8 @@
 # 2023/06/17 修复所有API方法不能正确使用的bug
 # 2023/08/04 修复仅在无人时更新不能正常使用的bug，现在仅默认下载正式版，测试版仅在用户选择使用测试版开服时才检测下载
 # 2023/08/11 更新默认的Token，修复仅在无人时更新不能正常使用的bug
-# 2023/10/25 修复开启新的存档会显示文件不存在的问题，修复自动加载mod不正常的问题
+# 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
+# 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
 
 ##常量区域
 
@@ -48,7 +49,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.7"
+script_version="1.7.8"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -85,9 +86,7 @@ init() {
 	get_cluster_main "$cluster_name"
 	# 获取存档进程名
 	get_process_name "$cluster_name"
-	#获取日志文件路径
-	get_path_server_log "$cluster_name"
-	# 获取存档的日志路径
+	#获取存档的日志路径
 	get_path_server_log "$cluster_name"
 	# 获取进程名（判断是否有开启）
 	get_process_name "$cluster_name"
@@ -115,7 +114,7 @@ get_path_script_files() {
 	# 判断是否存在这个文件夹，不存在就创建
 	if [ ! -d "$script_files_path" ]; then
 		mkdir "$script_files_path"
-		setconfig "$cluster_name"
+		init_config "$cluster_name"
 	fi
 	# 删除旧版本脚本残余文件
 	if [ -f "$script_files_path/gameversion.txt" ]; then
@@ -236,13 +235,55 @@ get_path_server_log() {
 }
 
 # 配置文件
-setconfig() {
+init_config() {
 	cluster_name=$1
-	if [ ! -f "$script_files_path/config.txt" ]; then
-		echo "version = 正式版32位" >"$script_files_path/config.txt"
-		echo "auto_update_anyway = true" >>"$script_files_path/config.txt"
+	config_file="$script_files_path/config.txt"
+	if [ ! -f "$config_file" ]; then
+		cat <<EOF >"$config_file"
+version = 正式版32位
+auto_update_anyway = true
+is_auto_backup = true
+is_debug_mode = false
+EOF
 	fi
 }
+
+# 配置文件
+set_config_bool() {
+	setting_name=$1
+	setting_options_true=$2
+	setting_options_false=$3
+	setting_value_current=$(grep --text "$setting_name" "$script_files_path/config.txt" | awk '{print $3}')
+	echo "##############################################"
+	echo "############# 请选择更改到的设置 #############"
+	echo "1. $setting_options_true"
+	echo "2. $setting_options_false"
+	echo "##############################################"
+	echo "输入数字序号即可,如:1 "
+	read -r select
+	if [ "$select" == "1" ]; then
+		sed -i "s/${setting_name} = ${setting_value_current}/${setting_name} = true/" "$script_files_path/config.txt"
+		echo "已更改为$setting_options_true"
+	elif [ "$select" == "2" ]; then
+		sed -i "s/${setting_name} = ${setting_value_current}/${setting_name} = false/" "$script_files_path/config.txt"
+		echo "已更改为$setting_options_false"
+	else
+		echo "输入有误，请重新输入"
+		set_config_bool "$setting_name" "$setting_options_true" "$setting_options_false"
+	fi
+}
+
+# 修复配置文件
+repair_config(){
+	setting_name=$1
+	setting_value=$2
+	setting_value_current=$(grep --text "$setting_name" "$script_files_path/config.txt" | awk '{print $3}')
+	if [ "$setting_value_current" == "" ]
+	then
+		echo "$setting_name = $setting_value" >>"$script_files_path/config.txt"
+	fi
+}
+
 
 ## 开服相关
 
@@ -381,6 +422,7 @@ start_server_check_select() {
 	check_flag=1
 	# 该进程存在时才进行判定
 	while :; do
+		get_path_server_log "$cluster_name"
 		if [ $mod_flag == 1 ] && [[ $(grep --text "[Workshop] OnDownloadPublishedFile" -c "$logpath_flag") -gt 0 ]] && [ $download_flag == 1 ]; then
 			sleep 1
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后.                         "
@@ -527,7 +569,7 @@ main() {
 		echo "                                          	             "
 		echo "  [4]查看服务器状态     [5]控制台         [6]重启服务器     "
 		echo "                                          	             "
-		echo "  [7]更改存档开启方式   [8]查看存档mod    [9]获取最新脚本   "
+		echo "  [7]更改存档默认配置   [8]查看存档mod    [9]获取最新脚本   "
 		echo "                                          	             "
 		echo "============================================================"
 		echo "                                                                                  "
@@ -564,8 +606,37 @@ main() {
 				restart_server "$cluster_name"
 				;;
 			7)
-				# 更换存档所开启的游戏版本
-				change_game_version "$cluster_name"
+				repair_config is_auto_backup true
+				repair_config is_debug_mode false
+				game_version_now=$(grep --text version "$script_files_path/config.txt" | awk '{print $3}')
+				auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+				is_auto_backup=$(grep --text is_auto_backup "$script_files_path/config.txt" | awk '{print $3}')
+
+				echo "============================================================"
+				echo "                                          	             "
+				echo "  [1]默认游戏开启版本(当前为：$game_version_now)"
+				echo "  [2]是否强制更新(当前为：$auto_update_anyway)"
+				echo "  [3]是否自动备份(当前为：$is_auto_backup)"
+				echo "                                          	             "
+				echo "============================================================"
+				echo "                                                                                  "
+				echo -e "\e[92m请输入命令代号，不输返回主菜单:\e[0m"
+				read -r settinginfo
+				(case $settinginfo in
+				1) 
+					# 更换存档所开启的游戏版本
+					change_game_version "$cluster_name"
+					;;
+				2) 
+					set_config_bool auto_update_anyway 直接更新，无论服务器有没有人 仅在服务器有没人时更新
+					;;
+				3) 
+					set_config_bool is_auto_backup 开启自动备份 关闭自动备份
+					;;
+				*)
+					main
+				esac)
+				
 				;;
 			8)
 				# 列出存档所使用的所有的mod
@@ -591,11 +662,11 @@ console() {
 		echo "                                                                                  "
 		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
 		echo "                                                                                  "
-		echo "	[7]利用备份回档-地下   [8]无人时更新配置  [9]返回上一级"
+		echo "	[7]利用备份回档-地下   "
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
-		echo -e "\e[92m请输入命令代号:\e[0m"
+		echo -e "\e[92m请输入命令代号，不输返回主菜单:\e[0m"
 		read -r consoleinfo
 		(case $consoleinfo in
 			1) serverinfo ;;
@@ -624,41 +695,11 @@ console() {
 			7)
 				get_server_save_path_caves
 				;;
-			8)
-				config_auto_update_anyway
-				;;
-			9)
+			*)
 				main
 				;;
 			esac)
 	done
-}
-
-# 无人时更新的配置
-config_auto_update_anyway() {
-	if [ "$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')" == "true" ]; then
-		echo "当前为直接更新，无论服务器有没有人"
-	elif [ "$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')" == "false" ]; then
-		echo "当前为仅在服务器有没人时更新"
-	fi
-	auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
-	echo "##############################################"
-	echo "############# 请选择更改到的模式 #############"
-	echo "#       1.直接更新，无论服务器有没有人       #"
-	echo "#       2.仅在服务器有没人时更新             #"
-	echo "##############################################"
-	echo "输入数字序号即可,如:1 "
-	read -r auto_update_anyway_select
-	if [ "$auto_update_anyway_select" == "1" ]; then
-		sed -i "2s/${auto_update_anyway}/true/g" "$script_files_path/config.txt"
-		echo "已修改为直接更新，无论服务器有没有人"
-	elif [ "$auto_update_anyway_select" == "2" ]; then
-		sed -i "2s/${auto_update_anyway}/false/g" "$script_files_path/config.txt"
-		echo "已修改为仅在服务器有没人时更新"
-	else
-		echo "输入有误，请重新输入"
-		config_auto_update_anyway "$cluster_name"
-	fi
 }
 
 # 重启服务器
@@ -672,14 +713,13 @@ restart_server() {
 # 更新游戏
 update_game() {
 	version_flag=$1
-	cd "$HOME/steamcmd" || exit
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
 	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
-		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	else
 		echo "同步最新测试版版游戏本体内容中。。。"
-		./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+		steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 	fi
 }
 
@@ -789,11 +829,10 @@ checkupdate() {
 	# 保存buildid的位置
 	buildid_version_path="$gamesPath/bin/buildid.txt"
 	DST_now=$(date +%Y年%m月%d日%H:%M)
-	cd "$HOME"/steamcmd || exit
 	# 判断一下对应开启的版本
 	# 获取最新buildid
 	echo "正在获取最新buildid。。。"
-	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -841,11 +880,19 @@ checkmodupdate() {
 	local has_mods_update=false
 	case $cluster_flag in
 	1 | 2) # 地上地下都有或者只有地上
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Master \
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		# 以下代码会导致日志出现乱码
+		# ./"$dontstarve_dedicated_server_nullrenderer" \
+		# 	-cluster "$cluster_name" \
+		# 	-shard Master \
+		# 	-only_update_server_mods \
+		# 	-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		timestamp=$(date +%s%3N)
+		screen -r "$process_name_main" -p 0 -X stuff "modVersionInfo = {} timestamp=$timestamp for _,mod_name in pairs(KnownModIndex:GetServerModNames()) do local modinfo = KnownModIndex:GetModInfo(mod_name) if modinfo.all_clients_require_mod and mod_name and modinfo.version then if modVersionInfo[mod_name] and modVersionInfo[mod_name] ~= modinfo.version then TheNet:Announce(string.format(\"模组：%s有更新,将从版本v%s升级到版本v%s\", mod_name, modVersionInfo[mod_name], modinfo.version)) print(timestamp,\"有更新\") end modVersionInfo[mod_name] = modinfo.version end end $(printf \\r)"
+
+		if grep --text -q -e "$timestamp	有更新" "${server_log_path_master}" ||
+			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
+			has_mods_update=true
+		fi
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
@@ -853,11 +900,20 @@ checkmodupdate() {
 		fi
 		;;
 	4) # 只有地下
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Caves \
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+		# 以下代码会导致日志出现乱码
+		# ./"$dontstarve_dedicated_server_nullrenderer" \
+		# 	-cluster "$cluster_name" \
+		# 	-shard Caves \
+		# 	-only_update_server_mods \
+		# 	-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
+
+		timestamp=$(date +%s%3N)
+		screen -r "$process_name_main" -p 0 -X stuff "modVersionInfo = {} timestamp=$timestamp for _,mod_name in pairs(KnownModIndex:GetServerModNames()) do local modinfo = KnownModIndex:GetModInfo(mod_name) if modinfo.all_clients_require_mod and mod_name and modinfo.version then if modVersionInfo[mod_name] and modVersionInfo[mod_name] ~= modinfo.version then TheNet:Announce(string.format(\"模组：%s有更新,将从版本v%s升级到版本v%s\", mod_name, modVersionInfo[mod_name], modinfo.version)) print(timestamp,\"有更新\") end modVersionInfo[mod_name] = modinfo.version end end $(printf \\r)"
+
+		if grep --text -q -e "$timestamp	有更新" "${server_log_path_caves}" ||
+			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
+			has_mods_update=true
+		fi
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_caves}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
@@ -968,10 +1024,12 @@ auto_update() {
 	cluster_name=$1
 	cd "$HOME" || exit
 	cd "${cluster_path}" || exit
+	
 	# 配置auto_update.sh
 	printf "%s" "#!/bin/bash
 	# 当前脚本所在位置及名称
 	script_path_name=\"$script_path/$SCRIPT_NAME\"
+	is_auto_backup=\$(grep --text is_auto_backup \"$script_files_path/config.txt\" | awk '{print \$3}')
 	# 使用脚本的方法
 	script(){
 		bash \$script_path_name \"\$1\" $cluster_name \"-AUTO\"
@@ -980,14 +1038,14 @@ auto_update() {
 	get_daysInfo()
 	{
 		datatime=\$(date +%s%3N)
-		screen -r \"$process_name_main\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime cycles\\\")\$(printf \\\r)\"
+		screen -r \"$process_name_main\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime\\\")\$(printf \\\r)\"
 		sleep 1
 		presentday=\$(grep --text \"$server_log_path_main\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
 	}
 	backup()
 	{
 		# 自动备份
-		if [ \"\$timecheck\" == 0 ];then
+		if [ \"\$timecheck\" == 0 ] && [ \"\$is_auto_backup\" == true ];then
 			if [  -d \"$master_saves_path\" ];then
 				cd \"$master_saves_path\" || exit
 				if [ ! -d \"$master_saves_path/saves_bak\" ];then
@@ -1110,9 +1168,12 @@ get_cluster_name() {
 	echo "输入数字选择要打开的存档      "
 	echo "===================================="
 	read -r folder_number
+	if [ "$folder_number" == "" ]; then
+		echo "存档名输入有误！"
+		main
+	fi
 	cluster_name=$(echo "$folders" | awk '{if($1 == '"$folder_number"') print $2}')
 	# 判断ScriptFiles文件夹
-	get_path_script_files "$cluster_name"
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
@@ -1120,8 +1181,9 @@ get_cluster_name() {
 		echo "存档不存在！"
 		main
 	else
+		get_path_script_files "$cluster_name"
 		init "$cluster_name"
-		setconfig "$cluster_name"
+		init_config "$cluster_name"
 	fi
 }
 
@@ -1147,7 +1209,7 @@ get_cluster_name_processing() {
 		main
 	else
 		init "$cluster_name"
-		setconfig "$cluster_name"
+		init_config "$cluster_name"
 	fi
 }
 
@@ -1161,6 +1223,7 @@ get_playerList() {
 		allplayerslist=$(date +%s%3N)
 		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
 		sleep 1
+		get_path_server_log "$cluster_name"
 		list=$(grep --text "$server_log_path_main" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15)
 		nowtime=$(date +'%Y-%m-%d %H:%M:%S')
 		txt="-----------------------------------------------------"
@@ -1214,6 +1277,7 @@ get_daysInfo() {
 	datatime=$(date +%s%3N)
 	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
 	sleep 1
+	get_path_server_log "$cluster_name"
 	presentday=$(grep --text "$server_log_path_main" -e "$datatime" | cut -d " " -f2 | tail -n +2)
 }
 
@@ -1235,6 +1299,7 @@ getmonster() {
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
 		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
 		sleep 1
+		get_path_server_log "$cluster_name"
 		walrus_camp_master=$(grep --text "$server_log_path_master" -e "walrus_camps in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		reeds_master=$(grep --text "$server_log_path_master" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		tentacle_master=$(grep --text "$server_log_path_master" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
@@ -1274,6 +1339,7 @@ getmonster() {
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook_nightmare\")$(printf \\r)"
 		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight_nightmare\")$(printf \\r)"
 		sleep 1
+		get_path_server_log "$cluster_name"
 		reeds_caves=$(grep --text "$server_log_path_caves" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		tentacle_caves=$(grep --text "$server_log_path_caves" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | awk '{print $4}')
@@ -1312,6 +1378,7 @@ getworldstate() {
 	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
 	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
 	sleep 1
+	get_path_server_log "$cluster_name"
 	presentseason=$(grep --text "$server_log_path_main" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2)
 	presentday=$(grep --text "$server_log_path_main" -e "$datatime print" | cut -d ' ' -f3 | tail -n +2)
 	presentphase=$(grep --text "$server_log_path_main" -e "$datatime phase" | cut -d ' ' -f2 | tail -n +2)
@@ -1374,21 +1441,17 @@ PreLibrary() {
 		echo "# 加载 Ubuntu Linux 环境 #"
 		echo "##########################"
 		echo ""
-		sudo apt-get -y clean
-		sudo apt-get -y update
-		sudo apt-get -y wget
+				
+		if [ "$(uname -m)" = "x86_64" ]; then
+			sudo add-apt-repository multiverse
+			sudo dpkg --add-architecture i386
+			sudo apt update
+			sudo apt install lib32gcc1 steamcmd 
+		fi
 
-		sudo apt-get -y install libstdc++6
-		sudo apt-get -y install lib32stdc++6
-		sudo apt-get -y install libc6-i386
-		sudo apt-get -y install libcurl4-gnutls-dev:i386
-		sudo apt-get -y install libcurl3-gnutls:i386
-		sudo dpkg --add-architecture i386
-
-		sudo apt-get -y install lib64gcc1
-		sudo apt-get -y install lib32gcc1
-
-		sudo apt-get -y install libcurl4-gnutls-dev
+		if [ "$(which steamcmd)" != "/usr/games/steamcmd" ]; then
+			sudo apt install steamcmd
+		fi
 
 		#一些必备工具
 		sudo apt-get -y install screen
@@ -1397,12 +1460,6 @@ PreLibrary() {
 		sudo apt-get -y install zip unzip
 		sudo apt-get -y install git
 
-		if [ -f "/usr/lib/libcurl.so.4" ]; then
-			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
-		fi
-		if [ -f "/usr/lib64/libcurl.so.4" ]; then
-			ln -sf /usr/lib64/libcurl.so.4 /usr/lib64/libcurl-gnutls.so.4
-		fi
 
 	elif
 		[ "$os" == "CentOS" ]
@@ -1459,31 +1516,23 @@ prepare() {
 	if [ -d "./dst_beta" ]; then
 		mv dst_beta/ DST_BETA/
 	fi
-	if [ ! -d "./steamcmd" ] || [ ! -d "./DST" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
+	if [ "$(which steamcmd)" != "/usr/games/steamcmd" ]; then
+		echo "新脚本的steamcmd获取方式已更改，正在重新安装steamcmd"
+		PreLibrary
+	fi
+	if [ ! -d "./DST" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
 		PreLibrary
 		mkdir "$DST_DEFAULT_PATH"
-		
-		mkdir "$HOME/steamcmd"
 		mkdir "$HOME/.klei"
 		mkdir "$HOME/.klei/DoNotStarveTogether"
 		mkdir "${DST_SAVE_PATH}"
-		cd "$HOME/steamcmd" || exit
-		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
-		tar -xvzf steamcmd_linux.tar.gz
-		sleep 1
-		rm -f steamcmd_linux.tar.gz
 	fi
 	# 下载游戏本体
 	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
 		echo "正在下载饥荒游戏本体！！！"
-		cd "$HOME/steamcmd" || exit
-		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	fi
-	# if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
-	# 	echo "正在下载饥荒测试版游戏本体！！！"
-	# 	cd "$HOME/steamcmd" || exit
-	# 	./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
-	# fi
+	
 }
 
 # 切换游戏版本
@@ -1515,8 +1564,7 @@ change_game_version() {
 		fi 
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
@@ -1526,8 +1574,7 @@ change_game_version() {
 		fi 
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版64位/g" "$script_files_path/config.txt"
 	else
