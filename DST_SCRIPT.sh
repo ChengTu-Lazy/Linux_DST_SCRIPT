@@ -36,6 +36,7 @@
 # 2023/08/11 更新默认的Token，修复仅在无人时更新不能正常使用的bug
 # 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
 # 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
+# 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
 
 ##常量区域
 
@@ -49,7 +50,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.8"
+script_version="1.7.9"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -327,9 +328,10 @@ start_server() {
 # 选择开启方式
 howtostart() {
 	cluster_name=$1
+	auto_flag=$2
 	check_player=$3
-	addmod "$cluster_name"
 	get_cluster_flag "$cluster_name"
+	addmod "$cluster_name" "$auto_flag"
 	get_process_name "$cluster_name"
 	(case $cluster_flag in
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
@@ -339,9 +341,6 @@ howtostart() {
 			;;
 		2)
 			start_server_select "$cluster_name" "$process_name_master" "start_server_master.sh"
-			;;
-		3)
-			echo "这行纯粹凑字数,没用的"
 			;;
 		4)
 			start_server_select "$cluster_name" "$process_name_caves" "start_server_caves.sh"
@@ -432,9 +431,18 @@ start_server_check_select() {
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后...                       "
 			sleep 1
 		elif [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -gt 0 ]] || [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
-			echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
-			mod_flag=0
-			download_flag=0
+			
+			if [[ $(grep --text "DownloadServerMods timed out with no response from Workshop..." -c "$logpath_flag") -gt 0 ]] 
+			then
+				echo -e "\r\e[31m连接创意工坊超时导致$w_flag服务器mod下载失败，将重新启动                                                                  \e[0m"
+				close_server "$cluster_name" -AUTO
+				start_server "$cluster_name" "$auto_flag"
+			else
+				echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
+				mod_flag=0
+				download_flag=0
+			fi
+
 		fi
 
 		# 检查有没有下载完成
@@ -535,6 +543,7 @@ start_server_check_fix() {
 #自动添加存档所需的mod
 addmod() {
 	cluster_name=$1
+	auto_flag=$2
 	# mod所在目录
 	get_cluster_main "$cluster_name"
 	get_dedicated_server_mods_setup "$cluster_name"
@@ -547,9 +556,71 @@ addmod() {
 		echo "" >>dedicated_server_mods_setup.lua
 		sleep 0.1
 		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
-			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
-			sleep 0.05
-			echo -e "\e[92m$line Mod添加完成\e[0m"
+			
+			# 要查找的文件夹名称
+			folder_name="$line"
+
+			# 最顶级文件夹路径
+			top_level_dir="${gamesPath}/ugc_mods"
+
+			# 查找文件夹并获取路径
+			folder_path=$(find "$top_level_dir" -type d -name "$folder_name" -print -quit)
+
+			#创建ugc_mod文件夹，如果不存在的话
+			(case $cluster_flag in
+			# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
+			1)
+				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
+				then
+					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330
+				fi
+
+				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
+				then
+					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330
+				fi
+				;;
+			2)
+				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
+				then
+					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330
+				fi
+				;;
+			4)
+				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
+				then
+					mkdir -p  "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330
+				fi
+				;;
+			esac)
+
+			# 检查mod是否已存在
+			if [ -n "$folder_path" ]; then
+
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
+				then
+					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Master/content/322330" >/dev/null 2>&1
+				fi
+
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
+				then
+					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Caves/content/322330" >/dev/null 2>&1
+				fi
+				sleep 0.05
+				echo -e "\e[92m$line 已复制已有Mod至该存档Mod文件夹中！\e[0m"
+			else
+				echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
+				sleep 0.05
+				echo -e "\e[92m$line Mod自动下载与更新添加完成\e[0m"
+			fi
+
+			if [ "$auto_flag" != "" ]
+			then
+				echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
+				sleep 0.05
+				echo -e "\e[92m$line Mod自动下载与更新添加完成\e[0m"
+			fi
+
 		done
 		echo -e "\e[92mMod添加完成!!!\e[0m"
 	else
@@ -835,7 +906,7 @@ checkupdate() {
 	# 获取最新buildid
 	echo "正在获取最新buildid。。。"
 	cd "$HOME"/steamcmd || exit
-	./steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -875,8 +946,9 @@ checkmodupdate() {
 	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
 	get_cluster_flag "$cluster_name"
 	get_path_server_log "$cluster_name"
-	# 保存独立存档mod文件的位置
-	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+	get_process_name "$cluster_name"
+	# # 保存独立存档mod文件的位置
+	# ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
 	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
 	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
 	echo " "
@@ -925,9 +997,9 @@ checkmodupdate() {
 		;;
 	esac
 
-	if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
-		has_mods_update=true
-	fi
+	# if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
+	# 	has_mods_update=true
+	# fi
 
 	if $has_mods_update; then
 		get_path_script_files "$cluster_name"
@@ -1111,8 +1183,8 @@ auto_update() {
 
 # 列出所有的mod
 list_all_mod() {
-	tput setaf 2
 	clear
+	tput setaf 2
 	# 各个世界模组所在的位置
 	mods_path_master="$ugc_mods_path"/Master/content/322330
 	mods_path_caves="$ugc_mods_path"/Caves/content/322330
@@ -1539,10 +1611,7 @@ prepare() {
 		mkdir "$HOME/.klei/DoNotStarveTogether"
 		mkdir "${DST_SAVE_PATH}"
 		cd "$HOME/steamcmd" || exit
-		wget https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
-		tar -xvzf steamcmd_linux.tar.gz
-		sleep 1
-		rm -f steamcmd_linux.tar.gz
+		curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar zxvf -
 	fi
 	# 下载游戏本体
 	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
@@ -1687,6 +1756,8 @@ elif [ "$1" == "-checkupdate" ]; then
 	checkupdate "$2"
 elif [ "$1" == "-checkmodupdate" ]; then
 	checkmodupdate "$2"
+elif [ "$1" == "-restart_server" ]; then
+	restart_server "$2" "$3"
 elif [ "$1" == "" ] && [ "$2" == "" ]; then
 	prepare
 	clear
