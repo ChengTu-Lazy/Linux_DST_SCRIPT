@@ -37,6 +37,7 @@
 # 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
 # 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
 # 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
+# 2024/03/13 对已有mod不再复制，更换检查mod更新方式
 
 ##常量区域
 
@@ -50,7 +51,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.7.9"
+script_version="1.8.0"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -381,6 +382,8 @@ start_server_select() {
 	grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g' >"$script_files_path"/"cluster_game_buildid.txt"
 	chmod 777 "$script_files_path"/"$script_start_server"
 	screen -dmS "$process_name_select" /bin/sh -c "$script_files_path/$script_start_server"
+
+
 }
 
 #检查是否成功开启
@@ -406,6 +409,8 @@ start_server_check() {
 		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
 		check_flag=1
 		sleep 1
+		get_process_name "$cluster_name"
+		screen -r "$process_name_main" -p 0 -X stuff " modVersionInfo = {}  $(printf \\r)"
 		return 1
 	fi
 }
@@ -431,7 +436,6 @@ start_server_check_select() {
 			echo -en "\r$w_flag服务器mod正在下载中,请稍后...                       "
 			sleep 1
 		elif [[ $(grep --text "FinishDownloadingServerMods Complete!" -c "$logpath_flag") -gt 0 ]] || [[ $(grep --text "SUCCESS: Loaded modoverrides.lua" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 1 ]; then
-			
 			if [[ $(grep --text "DownloadServerMods timed out with no response from Workshop..." -c "$logpath_flag") -gt 0 ]] 
 			then
 				echo -e "\r\e[31m连接创意工坊超时导致$w_flag服务器mod下载失败，将重新启动                                                                  \e[0m"
@@ -442,7 +446,6 @@ start_server_check_select() {
 				mod_flag=0
 				download_flag=0
 			fi
-
 		fi
 
 		# 检查有没有下载完成
@@ -597,30 +600,26 @@ addmod() {
 			# 检查mod是否已存在
 			if [ -n "$folder_path" ]; then
 
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/$line ]
 				then
 					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Master/content/322330" >/dev/null 2>&1
+					echo -e "\e[92m$line 已复制已有Mod至该存档地上Mod文件夹中！\e[0m"
 				fi
 
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/$line ]
 				then
 					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Caves/content/322330" >/dev/null 2>&1
+					echo -e "\e[92m$line 已复制已有Mod至该存档地下Mod文件夹中！\e[0m"
 				fi
 				sleep 0.05
-				echo -e "\e[92m$line 已复制已有Mod至该存档Mod文件夹中！\e[0m"
-			else
-				echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
-				sleep 0.05
-				echo -e "\e[92m$line Mod自动下载与更新添加完成\e[0m"
+
+				
 			fi
 
-			if [ "$auto_flag" != "" ]
-			then
-				echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
-				sleep 0.05
-				echo -e "\e[92m$line Mod自动下载与更新添加完成\e[0m"
-			fi
-
+			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
+			sleep 0.05
+			echo -e "\e[92m$line Mod自动下载与更新添加完成\e[0m"
+			
 		done
 		echo -e "\e[92mMod添加完成!!!\e[0m"
 	else
@@ -948,7 +947,7 @@ checkmodupdate() {
 	get_path_server_log "$cluster_name"
 	get_process_name "$cluster_name"
 	# # 保存独立存档mod文件的位置
-	# ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
+	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
 	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
 	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
 	echo " "
@@ -956,18 +955,11 @@ checkmodupdate() {
 	case $cluster_flag in
 	1 | 2) # 地上地下都有或者只有地上
 		# 以下代码会导致日志出现乱码
-		# ./"$dontstarve_dedicated_server_nullrenderer" \
-		# 	-cluster "$cluster_name" \
-		# 	-shard Master \
-		# 	-only_update_server_mods \
-		# 	-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
-		timestamp=$(date +%s%3N)
-		screen -r "$process_name_main" -p 0 -X stuff "modVersionInfo = {} timestamp=$timestamp for _,mod_name in pairs(KnownModIndex:GetServerModNames()) do local modinfo = KnownModIndex:GetModInfo(mod_name) if modinfo.all_clients_require_mod and mod_name and modinfo.version then if modVersionInfo[mod_name] and modVersionInfo[mod_name] ~= modinfo.version then TheNet:Announce(string.format(\"模组：%s有更新,将从版本v%s升级到版本v%s\", mod_name, modVersionInfo[mod_name], modinfo.version)) print(timestamp,\"有更新\") end modVersionInfo[mod_name] = modinfo.version end end $(printf \\r)"
-
-		if grep --text -q -e "$timestamp	有更新" "${server_log_path_master}" ||
-			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
-			has_mods_update=true
-		fi
+		./"$dontstarve_dedicated_server_nullrenderer" \
+			-cluster "$cluster_name" \
+			-shard Master_temp\
+			-only_update_server_mods \
+			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name".txt
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
@@ -976,19 +968,11 @@ checkmodupdate() {
 		;;
 	4) # 只有地下
 		# 以下代码会导致日志出现乱码
-		# ./"$dontstarve_dedicated_server_nullrenderer" \
-		# 	-cluster "$cluster_name" \
-		# 	-shard Caves \
-		# 	-only_update_server_mods \
-		# 	-ugc_directory "$ugc_mods_path/$cluster_name" >"$cluster_name".txt
-
-		timestamp=$(date +%s%3N)
-		screen -r "$process_name_main" -p 0 -X stuff "modVersionInfo = {} timestamp=$timestamp for _,mod_name in pairs(KnownModIndex:GetServerModNames()) do local modinfo = KnownModIndex:GetModInfo(mod_name) if modinfo.all_clients_require_mod and mod_name and modinfo.version then if modVersionInfo[mod_name] and modVersionInfo[mod_name] ~= modinfo.version then TheNet:Announce(string.format(\"模组：%s有更新,将从版本v%s升级到版本v%s\", mod_name, modVersionInfo[mod_name], modinfo.version)) print(timestamp,\"有更新\") end modVersionInfo[mod_name] = modinfo.version end end $(printf \\r)"
-
-		if grep --text -q -e "$timestamp	有更新" "${server_log_path_caves}" ||
-			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
-			has_mods_update=true
-		fi
+		./"$dontstarve_dedicated_server_nullrenderer" \
+			-cluster "$cluster_name" \
+			-shard Caves_temp\
+			-only_update_server_mods \
+			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name".txt
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_caves}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
@@ -997,9 +981,9 @@ checkmodupdate() {
 		;;
 	esac
 
-	# if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
-	# 	has_mods_update=true
-	# fi
+	if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
+		has_mods_update=true
+	fi
 
 	if $has_mods_update; then
 		get_path_script_files "$cluster_name"
