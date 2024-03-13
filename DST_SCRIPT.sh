@@ -37,7 +37,7 @@
 # 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
 # 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
 # 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
-# 2024/03/13 对已有mod不再复制，更换检查mod更新方式
+# 2024/03/13 对已有mod不再复制，更换检查mod更新方式，新增对地下mod的的检查
 
 ##常量区域
 
@@ -953,13 +953,31 @@ checkmodupdate() {
 	echo " "
 	local has_mods_update=false
 	case $cluster_flag in
-	1 | 2) # 地上地下都有或者只有地上
+	1) 	# 地上地下
 		# 以下代码会导致日志出现乱码
 		./"$dontstarve_dedicated_server_nullrenderer" \
 			-cluster "$cluster_name" \
 			-shard Master_temp\
 			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name".txt
+			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name"_Master.txt
+
+		./"$dontstarve_dedicated_server_nullrenderer" \
+			-cluster "$cluster_name" \
+			-shard Caves_temp\
+			-only_update_server_mods \
+			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name"_Caves.txt
+
+		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
+			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
+			has_mods_update=true
+		fi
+		;;
+	2)	#只有地上
+		./"$dontstarve_dedicated_server_nullrenderer" \
+			-cluster "$cluster_name" \
+			-shard Master_temp\
+			-only_update_server_mods \
+			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name"_Master.txt
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
@@ -972,7 +990,7 @@ checkmodupdate() {
 			-cluster "$cluster_name" \
 			-shard Caves_temp\
 			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name".txt
+			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name"_Caves.txt
 
 		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_caves}" ||
 			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
@@ -981,9 +999,22 @@ checkmodupdate() {
 		;;
 	esac
 
-	if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/$cluster_name.txt"; then
+
+	if [ -e "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Master.txt" ] 
+	then
+		if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Master.txt"; then
 		has_mods_update=true
+		fi
 	fi
+
+	if [ -e "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Caves.txt" ] 
+	then
+		if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Caves.txt"; then
+			has_mods_update=true
+		fi
+	fi
+
+
 
 	if $has_mods_update; then
 		get_path_script_files "$cluster_name"
