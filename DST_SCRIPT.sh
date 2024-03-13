@@ -37,7 +37,7 @@
 # 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
 # 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
 # 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
-# 2024/03/13 对已有mod不再复制，更换检查mod更新方式，新增对地下mod的的检查
+# 2024/03/13 对已有mod不再复制，更换检查mod更新方式
 
 ##常量区域
 
@@ -441,6 +441,7 @@ start_server_check_select() {
 				echo -e "\r\e[31m连接创意工坊超时导致$w_flag服务器mod下载失败，将重新启动                                                                  \e[0m"
 				close_server "$cluster_name" -AUTO
 				start_server "$cluster_name" "$auto_flag"
+				break
 			else
 				echo -e "\r\e[92m$w_flag服务器mod下载完成!!!                                                                  \e[0m"
 				mod_flag=0
@@ -600,13 +601,13 @@ addmod() {
 			# 检查mod是否已存在
 			if [ -n "$folder_path" ]; then
 
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/$line ]
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/"$line" ]
 				then
 					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Master/content/322330" >/dev/null 2>&1
 					echo -e "\e[92m$line 已复制已有Mod至该存档地上Mod文件夹中！\e[0m"
 				fi
 
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/$line ]
+				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/"$line" ]
 				then
 					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Caves/content/322330" >/dev/null 2>&1
 					echo -e "\e[92m$line 已复制已有Mod至该存档地下Mod文件夹中！\e[0m"
