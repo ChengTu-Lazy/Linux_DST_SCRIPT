@@ -38,6 +38,7 @@
 # 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
 # 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
 # 2024/03/13 对已有mod不再复制，更换检查mod更新方式
+# 2024/07/15 适配Debian、对于获取uuid等操作进行限时，防止卡更新进程
 
 ##常量区域
 
@@ -51,7 +52,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.0"
+script_version="1.8.1"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -507,6 +508,7 @@ start_server_check_select() {
 # 依赖自动修复
 start_server_check_fix() {
 	echo "依赖可能出错了,尝试修复中,如果还是没有开启成功请联系作者"
+	
 	if [ "$os" == "Ubuntu" ]; then
 		echo ""
 		echo "##########################"
@@ -517,6 +519,23 @@ start_server_check_fix() {
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libcurl3-gnutls:i386
+	elif
+		[ "$os" == "DebianGNU/" ]
+	then
+
+		echo ""
+		echo "##########################"
+		echo "# 加载 Debian Linux 环境 #"
+		echo "##########################"
+		echo ""
+		sudo apt-get -y update
+
+		sudo apt-get -y install libstdc++6
+		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libc6-i386
+		sudo apt-get -y install libcurl4-gnutls-dev:i386
+		sudo apt-get -y install libcurl3-gnutls:i386
+
 	elif
 		[ "$os" == "CentOS" ]
 	then
@@ -905,8 +924,9 @@ checkupdate() {
 	# 判断一下对应开启的版本
 	# 获取最新buildid
 	echo "正在获取最新buildid。。。"
-	cd "$HOME"/steamcmd || exit
-	./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' >"$buildid_version_path"
+	export buildid_version_path=$buildid_version_path
+	cd "$HOME"/steamcmd
+	timeout 100s bash -c './steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' > "$buildid_version_path"'
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -1586,6 +1606,38 @@ PreLibrary() {
 		sudo yum -y install gawk
 		sudo yum -y install zip unzip
 		sudo yum -y install git
+
+	elif
+		[ "$os" == "DebianGNU/" ]
+	then
+
+		echo ""
+		echo "##########################"
+		echo "# 加载 Debian Linux 环境 #"
+		echo "##########################"
+		echo ""
+		sudo apt-get -y clean
+		sudo apt-get -y update
+		sudo apt-get -y wget
+
+		sudo apt-get -y install libstdc++6
+		sudo apt-get -y install lib32stdc++6
+		sudo apt-get -y install libc6-i386
+		sudo apt-get -y install libcurl4-gnutls-dev:i386
+		sudo apt-get -y install libcurl3-gnutls:i386
+		sudo dpkg --add-architecture i386
+
+		sudo apt-get -y install lib64gcc1
+		sudo apt-get -y install lib32gcc1
+
+		sudo apt-get -y install libcurl4-gnutls-dev
+
+		#一些必备工具
+		sudo apt-get -y install screen
+		sudo apt-get -y install htop
+		sudo apt-get -y install gawk
+		sudo apt-get -y install zip unzip
+		sudo apt-get -y install git
 
 		if [ -f "/usr/lib/libcurl.so.4" ]; then
 			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
