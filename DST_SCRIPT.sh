@@ -916,7 +916,7 @@ close_server_autoUpdate() {
 	fi
 }
 
-#检查游戏更新情况
+#检查游戏更新情况（请求超时为10s，超时等待2s重新请求，最多请求5次
 checkupdate() {
 	cluster_name=$1
 	get_path_games "$cluster_name"
@@ -929,11 +929,30 @@ checkupdate() {
 	export buildid_version_path=$buildid_version_path
 	cd "$HOME"/steamcmd || exit
 
-	# 使用 API 获取游戏buildid
-	response=$(curl -s 'https://api.steamcmd.net/v1/info/343050')
+	local max_retries=5
+    local retry_count=0
+    local success=false
+
+    while [ $retry_count -lt $max_retries ]; do
+        response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
+        curl_exit_status=$?
+
+        if [ $curl_exit_status -eq 0 ]; then
+            success=true
+            break
+        else
+            echo "Request failed. Retrying in 5 seconds..."
+            sleep 5
+            ((retry_count++))
+        fi
+    done
+
+    if [ "$success" = true ]; then
 	buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
 	echo "$buildid" > "$buildid_version_path"
-
+    else
+        echo "Failed to retrieve game buildid after $max_retries attempts."
+    fi
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
