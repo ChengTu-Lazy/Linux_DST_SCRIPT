@@ -39,6 +39,7 @@
 # 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
 # 2024/03/13 对已有mod不再复制，更换检查mod更新方式
 # 2024/07/15 适配Debian、对于获取buildid操作进行限时，防止卡更新进程
+# 2024/08/04 更改依赖检查方式，新增默认安装库jq，用于解析json数据，改为使用 API 获取游戏buildid和mod信息
 
 ##常量区域
 
@@ -52,7 +53,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.1"
+script_version="1.8.2"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -334,6 +335,7 @@ howtostart() {
 	check_player=$3
 	get_cluster_flag "$cluster_name"
 	addmod "$cluster_name" "$auto_flag"
+	save_mod_info "$cluster_name"
 	get_process_name "$cluster_name"
 	(case $cluster_flag in
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
@@ -914,7 +916,7 @@ close_server_autoUpdate() {
 	fi
 }
 
-#查看游戏更新情况
+#检查游戏更新情况
 checkupdate() {
 	cluster_name=$1
 	get_path_games "$cluster_name"
@@ -925,8 +927,13 @@ checkupdate() {
 	# 获取最新buildid
 	echo "正在获取最新buildid。。。"
 	export buildid_version_path=$buildid_version_path
-	cd "$HOME"/steamcmd
-	timeout 100s bash -c './steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit | sed -e '/"branches"/,/^}/!d' | sed -n "/\"$buildid_version_flag\"/,/}/p" | grep --text -m 1 buildid | sed 's/[^0-9]//g' > "$buildid_version_path"'
+	cd "$HOME"/steamcmd || exit
+
+	# 使用 API 获取游戏buildid
+	response=$(curl -s 'https://api.steamcmd.net/v1/info/343050')
+	buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
+	echo "$buildid" > "$buildid_version_path"
+
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -957,86 +964,36 @@ checkupdate() {
 	fi
 }
 
-
-
-# 查看游戏mod更新情况
+# 检查游戏mod更新情况
 checkmodupdate() {
 	cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
 	DST_now=$(date +%Y年%m月%d日%H:%M)
-	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
-	get_cluster_flag "$cluster_name"
-	get_path_server_log "$cluster_name"
 	get_process_name "$cluster_name"
-	# # 保存独立存档mod文件的位置
-	ugc_mods_path="${gamesPath}/ugc_mods/$cluster_name"
 	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
-	cd "$dontstarve_dedicated_server_nullrenderer_path" || exit
-	echo " "
 	local has_mods_update=false
-	case $cluster_flag in
-	1) 	# 地上地下
-		# 以下代码会导致日志出现乱码
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Master_temp\
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name"_Master.txt
-
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Caves_temp\
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name"_Caves.txt
-
-		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
-			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
-			has_mods_update=true
-		fi
-		;;
-	2)	#只有地上
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Master_temp\
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Master" >"$cluster_name"_Master.txt
-
-		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_master}" ||
-			grep --text -q -e "模组已过期" "${server_log_path_master}"; then
-			has_mods_update=true
-		fi
-		;;
-	4) # 只有地下
-		# 以下代码会导致日志出现乱码
-		./"$dontstarve_dedicated_server_nullrenderer" \
-			-cluster "$cluster_name" \
-			-shard Caves_temp\
-			-only_update_server_mods \
-			-ugc_directory "$ugc_mods_path/Caves" >"$cluster_name"_Caves.txt
-
-		if grep --text -q -e "is out of date and needs to be updated for new users to be able to join the server" "${server_log_path_caves}" ||
-			grep --text -q -e "模组已过期" "${server_log_path_caves}"; then
-			has_mods_update=true
-		fi
-		;;
-	esac
-
-
-	if [ -e "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Master.txt" ] 
-	then
-		if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Master.txt"; then
-		has_mods_update=true
-		fi
+	# mod所在目录
+	get_cluster_main "$cluster_name"
+	get_dedicated_server_mods_setup "$cluster_name"
+	modoverrides_path="$cluster_main"/modoverrides.lua
+	
+	if [ -e "$modoverrides_path" ]; then
+		cd "${gamesPath}"/mods || exit
+		
+		# 使用 mapfile 读取 mod ID
+		mapfile -t mod_ids < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
+		
+		for MOD_PUBLISHED_FILE_ID in "${mod_ids[@]}"; do
+			get_mod_info  "$MOD_PUBLISHED_FILE_ID"
+			get_mod_info_file_details "$cluster_name" "$MOD_PUBLISHED_FILE_ID"
+			if [ "${mod_info_post[0]}" == "${mod_info_file[0]}" ] && [ "${mod_info_post[1]}" != "${mod_info_file[1]}" ]; then
+				echo 模组 \[ "${mod_info_post[0]}" \] 版本有更新: "${mod_info_file[1]}" =\> "${mod_info_post[1]}"
+				has_mods_update=true
+			fi
+		done
+	else
+		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
 	fi
-
-	if [ -e "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Caves.txt" ] 
-	then
-		if grep --text -q -e "DownloadPublishedFile" "${dontstarve_dedicated_server_nullrenderer_path}/""$cluster_name""_Caves.txt"; then
-			has_mods_update=true
-		fi
-	fi
-
-
-
+	
 	if $has_mods_update; then
 		get_path_script_files "$cluster_name"
 		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
@@ -1055,6 +1012,99 @@ checkmodupdate() {
 		echo -e "\e[92m${DST_now}: Mod 没有更新！\e[0m"
 		echo ""
 	fi
+}
+
+# 通过API获取mod信息（请求超时为10s，超时等待2s重新请求，最多请求5次
+get_mod_info() {
+    local MOD_PUBLISHED_FILE_ID=$1
+    local max_retries=5
+    local retry_count=0
+    local success=false
+	
+    while [ $retry_count -lt $max_retries ]; do
+        response=$(curl -s --connect-timeout 10 --max-time 10 -X POST 'http://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/' \
+            -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data "itemcount=1&publishedfileids[0]=$MOD_PUBLISHED_FILE_ID")
+        
+        curl_exit_status=$?
+
+        if [ $curl_exit_status -eq 0 ]; then
+            success=true
+            break
+        else
+            echo "Request failed. Retrying in 2 seconds..."
+            sleep 2
+            ((retry_count++))
+        fi
+    done
+
+    if [ "$success" = true ]; then
+        # 解析 JSON 响应获取mod名和版本号
+        mod_name=$(echo "$response" | jq -r '.response.publishedfiledetails[0].title')
+        mod_version=$(echo "$response" | jq -r '.response.publishedfiledetails[0].tags[] | select(.tag | test("version:")) | .tag')
+        # 提取版本号
+        mod_version_number=${mod_version#version:}
+
+        if [ "$mod_version" != "null" ]; then
+            mod_info_post=("$mod_name" "$mod_version_number")
+        else
+            mod_info_post=("null" "null")
+        fi
+    else
+        echo "Failed to retrieve mod info after $max_retries attempts."
+        mod_info_post=("null" "null")
+    fi
+}
+
+# 将mod信息保存到配置文件
+save_mod_info() {
+    local cluster_name=$1
+    get_path_script_files "$cluster_name"
+    local config_file="$script_files_path/mod_info.json"
+
+    get_cluster_main "$cluster_name"
+    get_dedicated_server_mods_setup "$cluster_name"
+    modoverrides_path="$cluster_main/modoverrides.lua"
+    if [ -e "$modoverrides_path" ]; then
+        cd "${gamesPath}/mods" || exit
+		# 删除配置文件重新创建
+		rm -rf "$config_file"
+		echo "{}" > "$config_file"
+        grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r MOD_PUBLISHED_FILE_ID; do
+            get_mod_info "$MOD_PUBLISHED_FILE_ID"
+			mod_name=${mod_info_post[0]}
+			mod_version_number=${mod_info_post[1]}
+            # 更新 JSON 配置内容
+            jq --arg mod_id "$MOD_PUBLISHED_FILE_ID" --arg title "$mod_name" --arg version "$mod_version_number" \
+                '.[$mod_id] = { "mod_name": $title, "mod_version": $version }' "$config_file" > tmp.$$.json && mv tmp.$$.json "$config_file"
+			echo Mod:"$mod_name" \["$mod_version_number"\] 已保存至配置文件
+        done
+    else
+        echo -e "\e[1;31m未找到mod配置文件 \e[0m"
+    fi
+    echo "已保存Mod配置文件至: $config_file"
+}
+
+# 获取mod配置文件中的mod信息
+get_mod_info_file_details() {
+    local cluster_name=$1
+    local MOD_PUBLISHED_FILE_ID=$2
+	get_path_script_files "$cluster_name"
+    local config_file="$script_files_path/mod_info.json"
+
+    if [ -f "$config_file" ]; then
+        mod_name=$(jq -r --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].mod_name' "$config_file")
+        mod_version=$(jq -r --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].mod_version' "$config_file")
+        
+        if [ "$mod_name" != "null" ] && [ "$mod_version" != "null" ]; then
+			mod_info_file=("$mod_name" "$mod_version")
+        else
+            echo "没找到这个Mod的信息: $MOD_PUBLISHED_FILE_ID"
+			mod_info_file=(null null)
+        fi
+    else
+        echo "Mod配置文件未找到: $config_file"
+    fi
 }
 
 #查看进程执行情况
@@ -1568,13 +1618,6 @@ PreLibrary() {
 
 		sudo apt-get -y install libcurl4-gnutls-dev
 
-		#一些必备工具
-		sudo apt-get -y install screen
-		sudo apt-get -y install htop
-		sudo apt-get -y install gawk
-		sudo apt-get -y install zip unzip
-		sudo apt-get -y install git
-
 		if [ -f "/usr/lib/libcurl.so.4" ]; then
 			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
 		fi
@@ -1598,14 +1641,6 @@ PreLibrary() {
 		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
 		# 加载 64bit 库
 		sudo yum -y install glibc libstdc++ libcurl
-
-		# 一些必备工具
-		sudo yum -y install tar wget screen
-		sudo yum -y install screen
-		sudo yum -y install htop
-		sudo yum -y install gawk
-		sudo yum -y install zip unzip
-		sudo yum -y install git
 
 	elif
 		[ "$os" == "DebianGNU/" ]
@@ -1632,13 +1667,6 @@ PreLibrary() {
 
 		sudo apt-get -y install libcurl4-gnutls-dev
 
-		#一些必备工具
-		sudo apt-get -y install screen
-		sudo apt-get -y install htop
-		sudo apt-get -y install gawk
-		sudo apt-get -y install zip unzip
-		sudo apt-get -y install git
-
 		if [ -f "/usr/lib/libcurl.so.4" ]; then
 			ln -sf /usr/lib/libcurl.so.4 /usr/lib/libcurl-gnutls.so.4
 		fi
@@ -1659,10 +1687,43 @@ PreLibrary() {
 	fi
 }
 
+#检查依赖是否安装
+check_the_library() {
+    local library_name=$1
+    if ! which "$library_name" >/dev/null 2>&1; then
+        echo "$library_name is not installed."
+        install_lib "$library_name"
+    fi
+}
+
+#安装依赖
+install_lib(){
+	local library_name=$1
+	if [ "$os" == "Ubuntu" ]; then
+		sudo apt-get -y install "$library_name"
+	elif
+		[ "$os" == "CentOS" ]
+	then
+		sudo yum -y install "$library_name"
+	elif
+		[ "$os" == "DebianGNU/" ]
+	then
+		sudo apt-get -y install "$library_name"
+	else
+		echo -e "\e[1;31m 该系统未被本脚本支持！ \e[0m"
+	fi
+}
 
 #前期准备
 prepare() {
 	cd "$HOME" || exit
+	#一些必备工具
+	check_the_library screen
+	check_the_library htop
+	check_the_library gawk
+	check_the_library zip unzip
+	check_the_library git
+	check_the_library jq
 	if [ -d "./dst" ]; then
 		echo "新脚本的目录结构已更改，可能需要重新下载游戏本体，请稍后。。。"
 		mv dst/ DST/
@@ -1826,6 +1887,8 @@ elif [ "$1" == "-checkmodupdate" ]; then
 	checkmodupdate "$2"
 elif [ "$1" == "-restart_server" ]; then
 	restart_server "$2" "$3"
+elif [ "$1" == "-save_mod_info" ]; then
+	save_mod_info "$2"
 elif [ "$1" == "" ] && [ "$2" == "" ]; then
 	prepare
 	clear
