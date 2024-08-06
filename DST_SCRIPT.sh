@@ -40,6 +40,7 @@
 # 2024/03/13 对已有mod不再复制，更换检查mod更新方式
 # 2024/07/15 适配Debian、对于获取buildid操作进行限时，防止卡更新进程
 # 2024/08/04 更改依赖检查方式，新增默认安装库jq，用于解析json数据，改为使用 API 获取游戏buildid和mod信息
+# 2024/08/06 更改查看游戏mod的方式
 
 ##常量区域
 
@@ -53,7 +54,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.2"
+script_version="1.8.3"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -1288,6 +1289,7 @@ auto_update() {
 
 # 列出所有的mod
 list_all_mod() {
+	local cluster_name=$1
 	clear
 	tput setaf 2
 	# 各个世界模组所在的位置
@@ -1317,10 +1319,10 @@ list_all_mod() {
 		echo ""
 	fi
 	if [ "$mods_path" != "" ]; then
-		for i in $(find "$mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
-			if [[ -f "$mods_path/$i/modinfo.lua" ]]; then
-				name=$(grep --text "$mods_path/$i/modinfo.lua" -e "name =" | cut -d '"' -f 2 | head -1)
-				echo -e "\e[92m$i\e[0m------\e[33m$name\e[0m"
+		for mod_num in $(find "$mods_path" -maxdepth 1 -exec basename {} \; | awk '{print $NF}'); do
+			if [[ -f "$mods_path/$mod_num/modinfo.lua" ]]; then
+				get_mod_info_file_details $cluster_name $mod_num
+				echo "${mod_info_file[0]}" "${mod_info_file[1]}" 
 			fi
 		done
 		echo ""
