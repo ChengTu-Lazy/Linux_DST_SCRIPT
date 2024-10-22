@@ -1,46 +1,4 @@
 #!/bin/bash
-#History:
-# 2022/04/12 诚徒
-# 2022/04/22 适配更多的服务器
-# 2022/04/22 新增更新服务器mod功能
-# 2022/06/13 修复自动添加mod功能被干扰的bug
-# 2022/06/14 完善开服,新增手动更新服务器功能
-# 2022/06/15 自动更新mod
-# 2022/06/30 自动更新服务器
-# 2022/07/04 新添保护进程功能,崩档自动重开相应的存档,正式上传github,地址: https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT
-# 2022/07/05 初始环境配置screen,提供默认的token文件模板,添加自动更新脚本的功能
-# 2022/07/06 参考https://gitee.com/changheqin/dst-server-for-linux-shell 优化自动更新mod的方法,并且适配更多linux系统
-# 2022/07/08 更好的支持多服务器开服,对于开启已开启服务器的行为做出反应,添加进行git加速的选项
-# 2022/07/14 修复无限重启的bug
-# 2022/07/18 新增记录开服时间功能，对关服理由进行了区分，更改脚本日志输出方式
-# 2022/07/22 新增控制台功能（回档，发送通知，复活全体玩家，查看服务器玩家情况），新增64位版本游戏服务器开启选项
-# 2022/07/23 新增备份功能，每次开启存档备份一次，每隔17280s(1/5天)自动备份一次档，位置在../Master/saves_bak和../Caves/saves_bak,超过二十个存档就会检测三天前的存档，如果有就会删除三天前的存档
-# 2022/07/29 每隔17280s(1/5天)自动备份一次档这是忽略了执行检查的时间，实际上是每隔17280次循环自动备份一次档，24天备份一下，现在改成了150次循环备份一下，即每5h备份一次
-# 2022/07/29 经过一天的测试，150次循环平均时间是一个小时，改成750，每5小时一次备份，遇到连不上klei服务器直接重启
-# 2022/08/11 连不上klei服务器时检测服务器里有没有人，如果有人就不重启，不然就直接重启
-# 2022/09/01 判断当前自动更新进程是否是最新开启的进程，如果是才进行服务器的更新，防止多服务器检测到更新有冲突
-# 2022/10/01 更改检查服务器版本有更新的方式，减少服务器资源占用
-# 2022/10/08 UI改变,重启策略更改
-# 2022/10/21 更改检查服务器版本有更新的方式,保存默认开始方式,默认正式版32位，可以通过选项7更改存档的默认开启方式
-# 2022/11/28 更改备份命名格式，增加使用备份存档回档的功能
-# 2023/01/09 新增存储玩家信息功能,位置在"${DST_SAVE_PATH}"/"$cluster_name"/PlayerList/，方便查找id来ban人，查看房间人数方法调整，更改备份数量至20为上限
-# 2023/01/10 优化代码结构，更改保存人物信息为有人在服务器的时候再保存
-# 2023/01/11 更加智能的更新脚本，不在绝对路径更新到最高级目录
-# 2023/02/08 增加仅在服务器无人时更新的设置（在控制台功能中）
-# 2023/04/16 修复开启存档时出现存档崩溃卡在检测开启的阶段的bug
-# 2023/04/17 修改一部分ui，更方便选择，直接输入数字即可
-# 2023/06/05 给代码归类，加注释，方便查阅更改，统一初始化，不再独立初始化
-# 2023/06/10 修复自动更新mod模块的路径获取失败的问题
-# 2023/06/17 修复所有API方法不能正确使用的bug
-# 2023/08/04 修复仅在无人时更新不能正常使用的bug，现在仅默认下载正式版，测试版仅在用户选择使用测试版开服时才检测下载
-# 2023/08/11 更新默认的Token，修复仅在无人时更新不能正常使用的bug
-# 2023/10/25 修复开启新的存档会显示文件夹不存在的问题，修复自动加载mod不正常的问题
-# 2024/03/10 新增存档是否自动备份配置，修复游戏日志出现乱码的情况，更改steamcmd的下载与使用方式
-# 2024/03/12 新增从已下载mod中复制的功能，新增对于创意工坊连接超时导致的mod下载不全的问题的解决方法
-# 2024/03/13 对已有mod不再复制，更换检查mod更新方式
-# 2024/07/15 适配Debian、对于获取buildid操作进行限时，防止卡更新进程
-# 2024/08/04 更改依赖检查方式，新增默认安装库jq，用于解析json数据，改为使用 API 获取游戏buildid和mod信息
-# 2024/08/06 更改查看游戏mod的方式
 
 ##常量区域
 
@@ -54,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.3"
+script_version="1.8.4"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -243,13 +201,16 @@ get_path_server_log() {
 init_config() {
 	cluster_name=$1
 	config_file="$script_files_path/config.txt"
-	if [ ! -f "$config_file" ]; then
-		cat <<EOF >"$config_file"
+	
+	if [ "$config_file" != "$HOME/.klei/DoNotStarveTogether/config.txt" ]; then
+		if [ ! -f "$config_file" ]; then
+			cat <<EOF >"$config_file"
 version = 正式版32位
 auto_update_anyway = true
 is_auto_backup = true
 is_debug_mode = false
 EOF
+		fi
 	fi
 }
 
@@ -335,7 +296,9 @@ howtostart() {
 	auto_flag=$2
 	check_player=$3
 	get_cluster_flag "$cluster_name"
-	addmod "$cluster_name" "$auto_flag"
+
+	addmod_by_http_or_steamcmd "$cluster_name" "$auto_flag"
+	
 	save_mod_info "$cluster_name"
 	get_process_name "$cluster_name"
 	(case $cluster_flag in
@@ -381,13 +344,12 @@ start_server_select() {
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
+	run_shared+=(-ugc_directory  $HOME/Steam/steamapps/workshop/)
 	run_shared+=(-monitor_parent_process $)
 	\"\${run_shared[@]}\" -shard $shard_name" >"$script_files_path"/"$script_start_server"
 	grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g' >"$script_files_path"/"cluster_game_buildid.txt"
 	chmod 777 "$script_files_path"/"$script_start_server"
 	screen -dmS "$process_name_select" /bin/sh -c "$script_files_path/$script_start_server"
-
-
 }
 
 #检查是否成功开启
@@ -566,8 +528,58 @@ start_server_check_fix() {
 	fi
 }
 
+# 通过steamcmd下载mod
+download_mod_by_steamcmd() {
+    V2_mods=$1
+    # mod所在目录
+    get_cluster_main "$cluster_name"
+    get_dedicated_server_mods_setup "$cluster_name"
+    modoverrides_path=$cluster_main/modoverrides.lua
+    
+    if [ -e "$modoverrides_path" ]; then
+		# 删除appworkshop_322330.acf
+		rm -rf "$HOME/Steam/steamapps/workshop/content/322330/appworkshop_322330.acf"
+        # 收集所有项目ID到字符串中
+        workshop_commands="+login anonymous "
+		# 统一用steamcmd下载V2_mods
+		if [ ${#V2_mods[@]} -gt 0 ]; then
+			for mod_id in "${V2_mods[@]}"; do
+				# 如果mod_id是空的，不操作
+				if [ -z "$mod_id" ]; then
+					continue
+				fi
+
+				# 如果文件夹不存在，追加到命令字符串中
+				if [ ! -f "$HOME/Steam/steamapps/workshop/content/322330/$mod_id/modmain.lua" ]; then
+					# 如果文件夹存在，追加到命令字符串中
+					workshop_commands+="+workshop_download_item 322330 $mod_id "
+				else
+					echo $mod_id mod已存在
+				fi
+			done
+		fi
+        workshop_commands+="+quit"
+		# 检查是否只有初始命令和结束命令
+		if [ "$workshop_commands" == "+login anonymous +quit" ]; then
+			echo "没有需要下载的V2 Mod项目"
+		else
+			echo $workshop_commands 123123123 
+			# 定义日志文件路径
+			mkdir -p "$HOME/Steam/logs"
+			log_file="$HOME/Steam/logs/stderr.txt"
+
+			# 执行命令并将输出写入日志文件和终端
+			cd $HOME/steamcmd || exit
+			./steamcmd.sh +quit
+			./steamcmd.sh $workshop_commands 2>&1 | tee "$log_file"
+		fi
+    else
+        echo -e "\e[1;31m未找到mod配置文件 \e[0m"
+    fi
+}
+
 #自动添加存档所需的mod
-addmod() {
+addmod_by_dst() {
 	cluster_name=$1
 	auto_flag=$2
 	# mod所在目录
@@ -582,62 +594,6 @@ addmod() {
 		echo "" >>dedicated_server_mods_setup.lua
 		sleep 0.1
 		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
-			
-			# 要查找的文件夹名称
-			folder_name="$line"
-
-			# 最顶级文件夹路径
-			top_level_dir="${gamesPath}/ugc_mods"
-
-			# 查找文件夹并获取路径
-			folder_path=$(find "$top_level_dir" -type d -name "$folder_name" -print -quit)
-
-			#创建ugc_mod文件夹，如果不存在的话
-			(case $cluster_flag in
-			# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
-			1)
-				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
-				then
-					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330
-				fi
-
-				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
-				then
-					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330
-				fi
-				;;
-			2)
-				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] 
-				then
-					mkdir -p "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330
-				fi
-				;;
-			4)
-				if [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] 
-				then
-					mkdir -p  "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330
-				fi
-				;;
-			esac)
-
-			# 检查mod是否已存在
-			if [ -n "$folder_path" ]; then
-
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/"$line" ]
-				then
-					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Master/content/322330" >/dev/null 2>&1
-					echo -e "\e[92m$line 已复制已有Mod至该存档地上Mod文件夹中！\e[0m"
-				fi
-
-				if [ -d "${gamesPath}"/ugc_mods/"$cluster_name"/Caves/content/322330 ] && [ ! -d "${gamesPath}"/ugc_mods/"$cluster_name"/Master/content/322330/"$line" ]
-				then
-					cp -r "$folder_path" "${gamesPath}/ugc_mods/$cluster_name/Caves/content/322330" >/dev/null 2>&1
-					echo -e "\e[92m$line 已复制已有Mod至该存档地下Mod文件夹中！\e[0m"
-				fi
-				sleep 0.05
-
-				
-			fi
 
 			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
 			sleep 0.05
@@ -648,6 +604,71 @@ addmod() {
 	else
 		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
 	fi
+}
+
+# 初始化V2_mods数组
+declare -a V2_mods
+
+#自动添加存档所需的mod
+addmod_by_http_or_steamcmd() {
+	cluster_name=$1
+	auto_flag=$2
+	# mod所在目录
+	get_cluster_main "$cluster_name"
+	get_dedicated_server_mods_setup "$cluster_name"
+	modoverrides_path=$cluster_main/modoverrides.lua
+	if [ -e "$modoverrides_path" ]; then
+		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
+		cd "${gamesPath}"/mods || exit
+		rm -rf dedicated_server_mods_setup.lua
+		sleep 0.1
+		echo "" >>dedicated_server_mods_setup.lua
+		sleep 0.1
+		V2_mods=()
+		while IFS= read -r mod_num; do
+			get_mod_info $mod_num
+			mod_file_url=${mod_info_post[2]}
+			# 判断是否为空字符串，如果是，这是V2的mod，要用steamcmd下载，否则用http下载
+
+			if [ "$mod_file_url" == "" ]; then
+				if [ ! -f "$HOME/Steam/steamapps/workshop/content/322330/$mod_num/modmain.lua" ]; then
+					echo "${mod_info_post[0]} [${mod_info_post[1]}] 是V2 Mod 后续将使用steamcmd下载"
+					V2_mods+=("$mod_num")
+				else
+					echo "${mod_info_post[0]} [${mod_info_post[1]}] 已存在"
+				fi
+			else
+				# 如果文件夹不存在，追加到命令字符串中
+				if [ ! -f "$HOME/DST/mods/workshop-$mod_num/modmain.lua" ]; then
+					download_mod_by_http $mod_file_url  $mod_num 
+				else
+					echo "${mod_info_post[0]} [${mod_info_post[1]}] 已存在"
+				fi
+			fi
+		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
+
+		download_mod_by_steamcmd ${V2_mods[@]}
+		
+		echo -e "\e[92mMod添加完成!!!\e[0m"
+	else
+		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
+	fi
+}
+
+#自动添加存档所需的mod
+download_mod_by_http() {
+	mod_file_url=$1
+	mod_num=$2
+	# 下载mod_file_url这个地址的文件
+	wget --progress=bar:force -q -O mod_publish_data_file.zip "$mod_file_url"
+	# 检查下载的文件是否是有效的zip文件
+	if unzip -tq mod_publish_data_file.zip >/dev/null 2>&1; then
+		unzip -oqL mod_publish_data_file.zip -d "$HOME/DST/mods/workshop-$mod_num" > /dev/null 2>&1
+		echo "${mod_info_post[0]} [${mod_info_post[1]}] 下载完成"
+	else
+		echo "下载的文件不是有效的zip文件: $mod_file_url"
+	fi
+	rm mod_publish_data_file.zip
 }
 
 #主菜单
@@ -854,50 +875,63 @@ close_server_select() {
 	close_flag=$3
 	check_player=$4
 	player_flag="false"
+	
 	if [ "$check_player" == "-NOBODY" ]; then
 		get_playerList "$cluster_name"
 		if [ "$have_player" != "false" ]; then
 			player_flag="true"
 		fi
 	fi
+	
 	if [[ $player_flag == "false" ]] || [ "$close_flag" == "" ] || [ "$close_flag" == "-close" ]; then
 		if [ "$close_flag" == "-close" ]; then
 			c_announce="服务器即将关闭，给您带来的不便还请谅解！！！"
 		elif [ "$close_flag" == "" ]; then
 			c_announce="服务器需要重启,给您带来的不便还请谅解！！！"
 		fi
+		
 		for i in $(screen -ls | grep --text -w "$process_name_close" | awk '/[0-9]{1,}\./ {print strtonum($1)}'); do
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r$world_close_flag服务器正在发布公告.  "
-			sleep 1.5
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r$world_close_flag服务器正在发布公告.. "
-			sleep 1.5
-			screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
-			echo -en "\r$world_close_flag服务器正在发布公告..."
-			sleep 1.5
+			for _ in {1..3}; do
+				screen -S "$i" -p 0 -X stuff "c_announce(\"$c_announce\") $(printf \\r)"
+				echo -en "\r$world_close_flag服务器正在发布公告.  "
+				sleep 1.5
+				echo -en "\r$world_close_flag服务器正在发布公告.. "
+				sleep 1.5
+				echo -en "\r$world_close_flag服务器正在发布公告..."
+				sleep 1.5
+			done
 			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
-			echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!                \e[0m"
+			echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!\e[0m"
 		done
-		while :; do
+		
+		max_attempts=3
+		attempt=0
+		
+		while (( attempt < max_attempts )); do
 			sleep 1
 			if [[ $(screen -ls | grep --text -c "\<$process_name_close\>") -gt 0 ]]; then
-				sleep 1.5
 				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.  "
-				sleep 1.5
+				sleep 1
 				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后.. "
-				sleep 1.5
+				sleep 1
 				echo -en "\r$world_close_flag进程 $cluster_name 正在关闭,请稍后..."
+				sleep 1
+				((attempt++))
 			else
-				echo -e "\r\e[92m$world_close_flag进程 $cluster_name 已关闭!!!                    \e[0m"
+				attempt=999
+				echo -e "\r\e[92m$world_close_flag进程 $cluster_name 已关闭!!!                   \e[0m"
 				sleep 1
 				break
+			fi
+			
+			if (( attempt == max_attempts )); then
+				echo -e "\r\e[91m进程 $cluster_name 未能正常关闭，强制终止!!!\e[0m"
+				screen -S "$process_name_close" -X quit
 			fi
 		done
 	else
 		echo "由于设置了仅在无人时更新,所以暂时不更新！"
 	fi
-
 }
 
 # 关闭服务器自动管理部分
@@ -934,26 +968,26 @@ checkupdate() {
     local retry_count=0
     local success=false
 
-    while [ $retry_count -lt $max_retries ]; do
-        response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
-        curl_exit_status=$?
+	while [ $retry_count -lt $max_retries ]; do
+		response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
+		curl_exit_status=$?
 
-        if [ $curl_exit_status -eq 0 ]; then
-            success=true
-            break
-        else
-            echo "Request failed. Retrying in 5 seconds..."
-            sleep 5
-            ((retry_count++))
-        fi
-    done
+		if [ $curl_exit_status -eq 0 ]; then
+			success=true
+			break
+		else
+			echo "请求失败。5秒后重试..."
+			sleep 5
+			((retry_count++))
+		fi
+	done
 
-    if [ "$success" = true ]; then
-	buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
-	echo "$buildid" > "$buildid_version_path"
-    else
-        echo "Failed to retrieve game buildid after $max_retries attempts."
-    fi
+	if [ "$success" = true ]; then
+		buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
+		echo "$buildid" > "$buildid_version_path"
+	else
+		echo "在尝试了 $max_retries 次后仍未能获取游戏 buildid。"
+	fi
 	#查看buildid是否一致
 	get_path_script_files "$cluster_name"
 	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
@@ -1064,15 +1098,17 @@ get_mod_info() {
         mod_version=$(echo "$response" | jq -r '.response.publishedfiledetails[0].tags[] | select(.tag | test("version:")) | .tag')
         # 提取版本号
         mod_version_number=${mod_version#version:}
+		# 提取file_url
+		file_url=$(echo "$response" | jq -r '.response.publishedfiledetails[0].file_url')
 
         if [ "$mod_version" != "null" ]; then
-            mod_info_post=("$mod_name" "$mod_version_number")
+            mod_info_post=("$mod_name" "$mod_version_number" "$file_url")
         else
-            mod_info_post=("null" "null")
+            mod_info_post=("null" "null" "null")
         fi
     else
-        echo "Failed to retrieve mod info after $max_retries attempts."
-        mod_info_post=("null" "null")
+		echo "在尝试了 $max_retries 次后仍未能获取模组信息。"
+        mod_info_post=("null" "null" "null")
     fi
 }
 
@@ -1906,6 +1942,10 @@ elif [ "$1" == "-checkupdate" ]; then
 	checkupdate "$2"
 elif [ "$1" == "-checkmodupdate" ]; then
 	checkmodupdate "$2"
+elif [ "$1" == "-addmod_by_http_or_steamcmd" ]; then
+	addmod_by_http_or_steamcmd "$2"
+elif [ "$1" == "-download_mod_by_http" ]; then
+	download_mod_by_http "$2"
 elif [ "$1" == "-restart_server" ]; then
 	restart_server "$2" "$3"
 elif [ "$1" == "-save_mod_info" ]; then
