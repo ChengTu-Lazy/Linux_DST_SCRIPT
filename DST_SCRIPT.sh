@@ -563,7 +563,6 @@ download_mod_by_steamcmd() {
 		if [ "$workshop_commands" == "+login anonymous +quit" ]; then
 			echo "没有需要下载的V2 Mod项目"
 		else
-			echo $workshop_commands 123123123 
 			# 定义日志文件路径
 			mkdir -p "$HOME/Steam/logs"
 			log_file="$HOME/Steam/logs/stderr.txt"
