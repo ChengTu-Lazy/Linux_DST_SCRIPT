@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.4"
+script_version="1.8.5"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -433,7 +433,21 @@ start_server_check_select() {
 			sleep 1
 			echo -en "\r$w_flag服务器开启中,请稍后...                            "
 			sleep 1
+		fi
 
+		get_process_name "$cluster_name"
+		if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+			if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -eq 0 ]]; then
+				echo -e "\r\e[1;31m$w_flag服务器地上服务器开启未成功,即将开启该存档。\e[0m"
+				start_server_select "$cluster_name" "$process_name_master" "start_server_master.sh"
+			fi
+		fi
+
+		if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+			if [[ $(screen -ls | grep --text -c "\<$process_name_caves\>") -eq 0 ]]; then
+				echo -e "\r\e[1;31m$w_flag服务器地下服务器开启未成功,即将开启该存档。\e[0m"
+				start_server_select "$cluster_name" "$process_name_caves" "start_server_caves.sh"
+			fi
 		fi
 
 		# mod检测和下载完成，服务器检测未完成
@@ -1317,8 +1331,13 @@ auto_update() {
 			done
 	" >"$script_files_path"/auto_update.sh
 	chmod 777 "$script_files_path"/auto_update.sh
-	screen -dmS "$process_name_AutoUpdate" /bin/sh -c "$script_files_path/auto_update.sh"
-	echo -e "\e[92m自动更新进程 $process_name_AutoUpdate 已启动\e[0m"
+	# 判断$process_name_AutoUpdate是否存在,存在则不开启
+	if [ "$(screen -ls | grep --text -c "\<$process_name_AutoUpdate\>")" -gt 0 ]; then
+		echo -e "\e[1;33m$process_name_AutoUpdate 已经执行! \e[0m"
+	else
+		screen -dmS "$process_name_AutoUpdate" /bin/sh -c "$script_files_path/auto_update.sh"
+		echo -e "\e[92m自动更新进程 $process_name_AutoUpdate 已启动\e[0m"
+	fi
 	sleep 1
 }
 
