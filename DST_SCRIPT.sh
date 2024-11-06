@@ -629,7 +629,6 @@ addmod_by_http_or_steamcmd() {
 	modoverrides_path=$cluster_main/modoverrides.lua
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
-		cd "${gamesPath}"/mods || exit
 		rm -rf dedicated_server_mods_setup.lua
 		sleep 0.1
 		echo "" >>dedicated_server_mods_setup.lua
@@ -638,8 +637,9 @@ addmod_by_http_or_steamcmd() {
 		while IFS= read -r mod_num; do
 			get_mod_info $mod_num
 			mod_file_url=${mod_info_post[2]}
+			local mod_config_file="$script_files_path/mod_info.json"
 			# 判断是否为空字符串，如果是，这是V2的mod，要用steamcmd下载，否则用http下载
-			is_latest=$(jq -r --arg id "$mod_num" '.[$id].is_latest' "$config_file")
+			is_latest=$(jq -r --arg id "$mod_num" '.[$id].is_latest' "$mod_config_file")
 			if [ "$is_latest" == "false" ]; then
 				if [ "$mod_file_url" == "" ]; then
 					rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_num"
@@ -1041,7 +1041,7 @@ checkmodupdate() {
 	cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
 	DST_now=$(date +%Y年%m月%d日%H:%M)
 	get_path_script_files "$cluster_name"
-	local config_file="$script_files_path/mod_info.json"
+	local mod_config_file="$script_files_path/mod_info.json"
 
 	get_process_name "$cluster_name"
 	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
@@ -1062,7 +1062,7 @@ checkmodupdate() {
 			get_mod_info_file_details "$cluster_name" "$MOD_PUBLISHED_FILE_ID"
 			if [ "${mod_info_post[0]}" == "${mod_info_file[0]}" ] && [ "${mod_info_post[1]}" != "${mod_info_file[1]}" ]; then
 				echo 模组 \[ "${mod_info_post[0]}" \] 版本有更新: "${mod_info_file[1]}" =\> "${mod_info_post[1]}"
-				jq --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].is_latest = false' "$config_file" >tmp.$$.json && mv tmp.$$.json "$config_file"
+				jq --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].is_latest = false' "$mod_config_file" >tmp.$$.json && mv tmp.$$.json "$mod_config_file"
 				has_mods_update=true
 			fi
 		done
