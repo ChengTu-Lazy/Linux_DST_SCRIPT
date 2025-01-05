@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.7"
+script_version="1.8.8"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -1105,6 +1105,16 @@ checkmodupdate() {
                 echo -e "当前版本: $current_version"
                 echo -e "最新版本: $online_version\e[0m"
                 has_mods_update=true
+                
+                # 删除需要更新的mod文件
+                if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
+                    echo "删除旧版本mod文件: workshop-$mod_id"
+                    rm -rf "$HOME/DST/mods/workshop-$mod_id"
+                fi
+                if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+                    echo "删除旧版本mod文件: $mod_id"
+                    rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+                fi
             else
                 echo -e "\e[92mMod [$mod_name] 已是最新版本 ($current_version)\e[0m"
             fi
@@ -1178,57 +1188,6 @@ get_mod_info() {
 	else
 		echo "在尝试了 $max_retries 次后仍未能获取模组信息。"
 		mod_info_post=("null" "null" "null")
-	fi
-}
-
-# 将mod信息保存到配置文件
-save_mod_info() {
-	local cluster_name=$1
-	get_path_script_files "$cluster_name"
-	local config_file="$script_files_path/mod_info.json"
-
-	get_cluster_main "$cluster_name"
-	get_dedicated_server_mods_setup "$cluster_name"
-	modoverrides_path="$cluster_main/modoverrides.lua"
-	if [ -e "$modoverrides_path" ]; then
-		cd "${gamesPath}/mods" || exit
-		# 删除配置文件重新创建
-		rm -rf "$config_file"
-		echo "{}" >"$config_file"
-		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r MOD_PUBLISHED_FILE_ID; do
-			get_mod_info "$MOD_PUBLISHED_FILE_ID"
-			mod_name=${mod_info_post[0]}
-			mod_version_number=${mod_info_post[1]}
-			# 更新 JSON 配置内容
-			jq --arg mod_id "$MOD_PUBLISHED_FILE_ID" --arg title "$mod_name" --arg version "$mod_version_number" \
-				'.[$mod_id] = { "mod_name": $title, "mod_version": $version , "is_latest": true}' "$config_file" >tmp.$$.json && mv tmp.$$.json "$config_file"
-			echo Mod:"$mod_name" \["$mod_version_number"\] 已保存至配置文件
-		done
-	else
-		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
-	fi
-	echo "已保存Mod配置文件至: $config_file"
-}
-
-# 获取mod配置文件中的mod信息
-get_mod_info_file_details() {
-	local cluster_name=$1
-	local MOD_PUBLISHED_FILE_ID=$2
-	get_path_script_files "$cluster_name"
-	local config_file="$script_files_path/mod_info.json"
-
-	if [ -f "$config_file" ]; then
-		mod_name=$(jq -r --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].mod_name' "$config_file")
-		mod_version=$(jq -r --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].mod_version' "$config_file")
-
-		if [ "$mod_name" != "null" ] && [ "$mod_version" != "null" ]; then
-			mod_info_file=("$mod_name" "$mod_version")
-		else
-			echo "没找到这个Mod的信息: $MOD_PUBLISHED_FILE_ID"
-			mod_info_file=(null null)
-		fi
-	else
-		echo "Mod配置文件未找到: $config_file"
 	fi
 }
 
