@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.6"
+script_version="1.8.7"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -297,7 +297,6 @@ howtostart() {
 
 	addmod_by_http_or_steamcmd "$cluster_name" "$auto_flag"
 
-	save_mod_info "$cluster_name"
 	get_process_name "$cluster_name"
 	(case $cluster_flag in
 		# 1:地上地下都有 2:只有地上 5:啥也没有 4:只有地下
@@ -969,125 +968,173 @@ close_server_autoUpdate() {
 	fi
 }
 
-#检查游戏更新情况（请求超时为10s，超时等待2s重新请求，最多请求5次
+#检查游戏更新情况
 checkupdate() {
-	cluster_name=$1
-	get_path_games "$cluster_name"
-	# 保存buildid的位置
-	buildid_version_path="$gamesPath/bin/buildid.txt"
-	DST_now=$(date +%Y年%m月%d日%H:%M)
-	# 判断一下对应开启的版本
-	# 获取最新buildid
-	echo "正在获取最新buildid。。。"
-	export buildid_version_path=$buildid_version_path
-	cd "$HOME"/steamcmd || exit
+    cluster_name=$1
+    get_path_games "$cluster_name"
+    # 保存buildid的位置
+    buildid_version_path="$gamesPath/bin/buildid.txt"
+    DST_now=$(date +%Y年%m月%d日%H:%M)
+    # 判断一下对应开启的版本
+    # 获取最新buildid
+    echo "正在获取最新buildid。。。"
+    export buildid_version_path=$buildid_version_path
+    cd "$HOME"/steamcmd || exit
 
-	local max_retries=5
-	local retry_count=0
-	local success=false
+    # 修改重试次数和间隔
+    local max_retries=3  # 从5改为3
+    local retry_count=0
+    local success=false
 
-	while [ $retry_count -lt $max_retries ]; do
-		response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
-		curl_exit_status=$?
+    # 清理旧的Steam用户数据
+    echo "清理3天前的Steam用户数据..."
+    find "$HOME/Steam/userdata" -type f -mtime +3 -delete 2>/dev/null
+    find "$HOME/Steam/userdata" -type d -empty -delete 2>/dev/null
 
-		if [ $curl_exit_status -eq 0 ]; then
-			success=true
-			break
-		else
-			echo "请求失败。5秒后重试..."
-			sleep 5
-			((retry_count++))
-		fi
-	done
+    # 首先尝试通过API获取
+    while [ $retry_count -lt $max_retries ]; do
+        response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
+        curl_exit_status=$?
 
-	if [ "$success" = true ]; then
-		buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
-		echo "$buildid" >"$buildid_version_path"
-	else
-		echo "在尝试了 $max_retries 次后仍未能获取游戏 buildid。"
-	fi
-	#查看buildid是否一致
-	get_path_script_files "$cluster_name"
-	if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(cat "$script_files_path"/"cluster_game_buildid.txt") ]]; then
-		echo " "
-		echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
-		echo " "
-		# 先检查游戏本体是不是最新的，如果是的话，那就直接重启存档就可以了,不然的话就先更新游戏本体
-		if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g') ]]; then
-			# 更新游戏本体
-			if [ "$buildid_version_flag" == "public" ]; then
-				echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
-				update_game DEFAULT
-			else
-				echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
-				update_game BETA
-			fi
-		fi
-		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
-		c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
-		if [ "$auto_update_anyway" == "true" ]; then
-			# 重启该存档，但不关闭当前进程
-			restart_server "$cluster_name" -AUTO
-		else
-			restart_server "$cluster_name" -AUTO -NOBODY
-		fi
-	else
-		echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
-	fi
+        if [ $curl_exit_status -eq 0 ]; then
+            buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
+            if [ -n "$buildid" ] && [ "$buildid" != "null" ]; then
+                echo "通过API成功获取buildid: $buildid"
+                echo "$buildid" >"$buildid_version_path"
+                success=true
+                break
+            fi
+        fi
+        echo "API请求失败，3秒后重试..."  # 从5秒改为3秒
+        sleep 3  # 从5改为3
+        ((retry_count++))
+    done
+
+    # 如果API获取失败，尝试通过steamcmd获取
+    if [ "$success" != true ]; then
+        echo "API获取失败，尝试通过steamcmd获取buildid..."
+        cd "$HOME/steamcmd" || exit
+        ./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit > steam_app_info.txt
+        
+        if [ -f "steam_app_info.txt" ]; then
+            buildid=$(grep -A 5 "\"public\"" steam_app_info.txt | grep "buildid" | cut -d '"' -f 4)
+            if [ -n "$buildid" ]; then
+                echo "通过steamcmd成功获取buildid: $buildid"
+                echo "$buildid" >"$buildid_version_path"
+                success=true
+            fi
+            rm steam_app_info.txt
+        fi
+    fi
+
+    if [ "$success" != true ]; then
+        echo "无法获取buildid，请检查网络连接或手动更新"
+        return 1
+    fi
+
+    # 显示buildid对比信息
+    get_path_script_files "$cluster_name"
+    local current_buildid
+    current_buildid=$(cat "$script_files_path"/"cluster_game_buildid.txt")
+    echo -e "\e[92m当前存档buildid: $current_buildid\e[0m"
+    echo -e "\e[92m最新在线buildid: $buildid\e[0m"
+
+    if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $current_buildid ]]; then
+        echo " "
+        echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
+        echo " "
+        # 先检查游戏本体是不是最新的，如果是的话，那就直接重启存档就可以了,不然的话就先更新游戏本体
+        if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g') ]]; then
+            # 更新游戏本体
+            if [ "$buildid_version_flag" == "public" ]; then
+                echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
+                update_game DEFAULT
+            else
+                echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
+                update_game BETA
+            fi
+        fi
+        auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+        c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
+        if [ "$auto_update_anyway" == "true" ]; then
+            # 重启该存档，但不关闭当前进程
+            restart_server "$cluster_name" -AUTO
+        else
+            restart_server "$cluster_name" -AUTO -NOBODY
+        fi
+    else
+        echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
+    fi
 }
 
 # 检查游戏mod更新情况
 checkmodupdate() {
-	cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
-	DST_now=$(date +%Y年%m月%d日%H:%M)
-	get_path_script_files "$cluster_name"
-	local mod_config_file="$script_files_path/mod_info.json"
-
-	get_process_name "$cluster_name"
-	echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
-	local has_mods_update=false
-	# mod所在目录
-	get_cluster_main "$cluster_name"
-	get_dedicated_server_mods_setup "$cluster_name"
-	modoverrides_path="$cluster_main"/modoverrides.lua
-
-	if [ -e "$modoverrides_path" ]; then
-		cd "${gamesPath}"/mods || exit
-
-		# 使用 mapfile 读取 mod ID
-		mapfile -t mod_ids < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
-
-		for MOD_PUBLISHED_FILE_ID in "${mod_ids[@]}"; do
-			get_mod_info "$MOD_PUBLISHED_FILE_ID"
-			get_mod_info_file_details "$cluster_name" "$MOD_PUBLISHED_FILE_ID"
-			if [ "${mod_info_post[0]}" == "${mod_info_file[0]}" ] && [ "${mod_info_post[1]}" != "${mod_info_file[1]}" ]; then
-				echo 模组 \[ "${mod_info_post[0]}" \] 版本有更新: "${mod_info_file[1]}" =\> "${mod_info_post[1]}"
-				jq --arg id "$MOD_PUBLISHED_FILE_ID" '.[$id].is_latest = false' "$mod_config_file" >tmp.$$.json && mv tmp.$$.json "$mod_config_file"
-				has_mods_update=true
-			fi
-		done
-	else
-		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
-	fi
-
-	if $has_mods_update; then
-		get_path_script_files "$cluster_name"
-		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
-		echo ""
-		echo -e "\e[31m${DST_now}: Mod 有更新！\e[0m"
-		echo ""
-		if [[ "$auto_update_anyway" == "true" ]]; then
-			# 重启该存档，但不关闭当前进程
-			c_announce="检测到游戏Mod有更新,需要重新加载mod,给您带来的不便还请谅解！！！"
-			restart_server "$cluster_name" -AUTO
-		else
-			restart_server "$cluster_name" -AUTO -NOBODY
-		fi
-	else
-		echo ""
-		echo -e "\e[92m${DST_now}: Mod 没有更新！\e[0m"
-		echo ""
-	fi
+    cluster_name=${1:?Usage: checkmodupdate [cluster_name]}
+    DST_now=$(date +%Y年%m月%d日%H:%M)
+    get_process_name "$cluster_name"
+    
+    echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
+    
+    # 使用时间戳标记本次查询
+    local timestamp=$(date +%s%3N)
+    
+    # 通过控制台获取当前加载的mod信息
+    screen -r "$process_name_main" -p 0 -X stuff "for k,v in pairs(KnownModIndex:GetModsToLoad()) do local modinfo = KnownModIndex:GetModInfo(v) print(string.format(\"modinfo $timestamp %s %s\", v, modinfo.version)) end$(printf \\r)"
+    sleep 1
+    
+    # 获取日志路径
+    get_path_server_log "$cluster_name"
+    
+    # 解析日志获取mod信息
+    local has_mods_update=false
+    
+    # 读取并处理日志中的mod信息
+    while read -r line; do
+        if [[ $line =~ modinfo[[:space:]]$timestamp[[:space:]]workshop-([0-9]+)[[:space:]](.+)$ ]]; then
+            local mod_id="${BASH_REMATCH[1]}"
+            local current_version="${BASH_REMATCH[2]}"
+            
+            # 获取在线mod信息
+            get_mod_info "$mod_id"
+            local online_version="${mod_info_post[1]}"
+            local mod_name="${mod_info_post[0]}"
+            
+            # 比较版本
+            if [ "$current_version" != "$online_version" ]; then
+                echo -e "\e[33mMod [$mod_name] 有更新:"
+                echo -e "当前版本: $current_version"
+                echo -e "最新版本: $online_version\e[0m"
+                has_mods_update=true
+            else
+                echo -e "\e[92mMod [$mod_name] 已是最新版本 ($current_version)\e[0m"
+            fi
+        fi
+    done < <(grep --text "modinfo $timestamp" "$server_log_path_main")
+    
+    if [ "$has_mods_update" = true ]; then
+        echo -e "\e[31m${DST_now}: 发现mod更新!\e[0m"
+        
+        # 获取配置
+        get_path_script_files "$cluster_name"
+        auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+        
+        if [ "$auto_update_anyway" == "true" ]; then
+            echo "准备更新mod..."
+            c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
+            restart_server "$cluster_name" -AUTO
+        else
+            get_playerList "$cluster_name"
+            if [ "$have_player" = false ]; then
+                echo "服务器无玩家，准备更新mod..."
+                c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
+                restart_server "$cluster_name" -AUTO
+            else
+                echo "服务器有玩家在线，暂不更新mod"
+            fi
+        fi
+    else
+        echo -e "\e[92m${DST_now}: 所有mod均为最新版本\e[0m"
+    fi
 }
 
 # 通过API获取mod信息（请求超时为10s，超时等待2s重新请求，最多请求5次
