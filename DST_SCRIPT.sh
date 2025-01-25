@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.8"
+script_version="1.8.9"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -636,16 +636,6 @@ addmod_by_http_or_steamcmd() {
 		while IFS= read -r mod_num; do
 			get_mod_info $mod_num
 			mod_file_url=${mod_info_post[2]}
-			local mod_config_file="$script_files_path/mod_info.json"
-			# 判断是否为空字符串，如果是，这是V2的mod，要用steamcmd下载，否则用http下载
-			is_latest=$(jq -r --arg id "$mod_num" '.[$id].is_latest' "$mod_config_file")
-			if [ "$is_latest" == "false" ]; then
-				if [ "$mod_file_url" == "" ]; then
-					rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_num"
-				else
-					rm -rf "$HOME/DST/mods/workshop-$mod_num"
-				fi
-			fi
 			if [ "$mod_file_url" == "" ]; then
 				if [ ! -f "$HOME/Steam/steamapps/workshop/content/322330/$mod_num/modmain.lua" ]; then
 					echo "${mod_info_post[0]} [${mod_info_post[1]}] 是V2 Mod 后续将使用steamcmd下载"
