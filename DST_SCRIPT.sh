@@ -1065,38 +1065,34 @@ checkmodupdate() {
     
     echo -e "\e[92m${DST_now}: 正在检查服务器mod是否有更新...\e[0m"
     
-    # 使用时间戳标记本次查询
     local timestamp=$(date +%s%3N)
     
-    # 通过控制台获取当前加载的mod信息
     screen -r "$process_name_main" -p 0 -X stuff "for k,v in pairs(KnownModIndex:GetModsToLoad()) do local modinfo = KnownModIndex:GetModInfo(v) print(string.format(\"modinfo $timestamp %s %s\", v, modinfo.version)) end$(printf \\r)"
     sleep 1
     
-    # 获取日志路径
     get_path_server_log "$cluster_name"
     
-    # 解析日志获取mod信息
     local has_mods_update=false
     
-    # 读取并处理日志中的mod信息
     while read -r line; do
         if [[ $line =~ modinfo[[:space:]]$timestamp[[:space:]]workshop-([0-9]+)[[:space:]](.+)$ ]]; then
             local mod_id="${BASH_REMATCH[1]}"
             local current_version="${BASH_REMATCH[2]}"
             
-            # 获取在线mod信息
             get_mod_info "$mod_id"
             local online_version="${mod_info_post[1]}"
             local mod_name="${mod_info_post[0]}"
             
-            # 比较版本
-            if [ "$current_version" != "$online_version" ]; then
+            # 转换为小写进行比较
+            current_version_lower=$(echo "$current_version" | tr '[:upper:]' '[:lower:]')
+            online_version_lower=$(echo "$online_version" | tr '[:upper:]' '[:lower:]')
+
+            if [ "$current_version_lower" != "$online_version_lower" ]; then
                 echo -e "\e[33mMod [$mod_name] 有更新:"
                 echo -e "当前版本: $current_version"
                 echo -e "最新版本: $online_version\e[0m"
                 has_mods_update=true
                 
-                # 删除需要更新的mod文件
                 if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
                     echo "删除旧版本mod文件: workshop-$mod_id"
                     rm -rf "$HOME/DST/mods/workshop-$mod_id"
@@ -1114,7 +1110,6 @@ checkmodupdate() {
     if [ "$has_mods_update" = true ]; then
         echo -e "\e[31m${DST_now}: 发现mod更新!\e[0m"
         
-        # 获取配置
         get_path_script_files "$cluster_name"
         auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
         
