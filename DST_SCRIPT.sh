@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.9"
+script_version="1.8.10"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -598,10 +598,12 @@ addmod_by_dst() {
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
 		cd "${gamesPath}"/mods || exit
-		rm -rf dedicated_server_mods_setup.lua
-		sleep 0.1
-		echo "" >>dedicated_server_mods_setup.lua
-		sleep 0.1
+		if [ -n "$dedicated_server_mods_setup" ]; then
+			rm -rf "$dedicated_server_mods_setup"
+			sleep 0.1
+			echo "" >>"$dedicated_server_mods_setup"
+			sleep 0.1
+		fi
 		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
 
 			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
@@ -628,10 +630,12 @@ addmod_by_http_or_steamcmd() {
 	modoverrides_path=$cluster_main/modoverrides.lua
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
-		rm -rf dedicated_server_mods_setup.lua
-		sleep 0.1
-		echo "" >>dedicated_server_mods_setup.lua
-		sleep 0.1
+		if [ -n "$dedicated_server_mods_setup" ]; then
+			rm -rf "$dedicated_server_mods_setup"
+			sleep 0.1
+			echo "" >>"$dedicated_server_mods_setup"
+			sleep 0.1
+		fi
 		V2_mods=()
 		while IFS= read -r mod_num; do
 			get_mod_info $mod_num
@@ -665,16 +669,16 @@ addmod_by_http_or_steamcmd() {
 download_mod_by_http() {
 	mod_file_url=$1
 	mod_num=$2
-	# 下载mod_file_url这个地址的文件
-	wget --progress=bar:force -q -O mod_publish_data_file.zip "$mod_file_url"
-	# 检查下载的文件是否是有效的zip文件
-	if unzip -tq mod_publish_data_file.zip >/dev/null 2>&1; then
-		unzip -oqL mod_publish_data_file.zip -d "$HOME/DST/mods/workshop-$mod_num" >/dev/null 2>&1
-		echo "${mod_info_post[0]} [${mod_info_post[1]}] 下载完成"
-	else
-		echo "下载的文件不是有效的zip文件: $mod_file_url"
-	fi
-	rm mod_publish_data_file.zip
+	temp_dir="/tmp/mod_${mod_num}"
+	
+	# 下载到临时目录
+	wget -q -O "$temp_dir/mod.zip" "$mod_file_url" || { echo "下载失败，保留旧 Mod"; return 1; }
+	unzip -tq "$temp_dir/mod.zip" || { echo "文件损坏，保留旧 Mod"; rm -rf "$temp_dir"; return 1; }
+	
+	# 替换旧 Mod
+	rm -rf "$mods_path/workshop-${mod_num}"
+	unzip -oq "$temp_dir/mod.zip" -d "$mods_path"
+	rm -rf "$temp_dir"
 }
 
 #主菜单
@@ -1073,7 +1077,8 @@ checkmodupdate() {
     get_path_server_log "$cluster_name"
     
     local has_mods_update=false
-    
+    declare -A updated_mods
+
     while read -r line; do
         if [[ $line =~ modinfo[[:space:]]$timestamp[[:space:]]workshop-([0-9]+)[[:space:]](.+)$ ]]; then
             local mod_id="${BASH_REMATCH[1]}"
@@ -1092,15 +1097,7 @@ checkmodupdate() {
                 echo -e "当前版本: $current_version"
                 echo -e "最新版本: $online_version\e[0m"
                 has_mods_update=true
-                
-                if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
-                    echo "删除旧版本mod文件: workshop-$mod_id"
-                    rm -rf "$HOME/DST/mods/workshop-$mod_id"
-                fi
-                if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
-                    echo "删除旧版本mod文件: $mod_id"
-                    rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
-                fi
+				updated_mods["$mod_id"]="$mod_name"
             else
                 echo -e "\e[92mMod [$mod_name] 已是最新版本 ($current_version)\e[0m"
             fi
@@ -1116,13 +1113,43 @@ checkmodupdate() {
         if [ "$auto_update_anyway" == "true" ]; then
             echo "准备更新mod..."
             c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
-            restart_server "$cluster_name" -AUTO
+            close_server "$cluster_name" -AUTO
+
+			# 服务器已关闭，删除旧版本 mod 文件
+			for mod_id in "${!updated_mods[@]}"; do
+				mod_name="${updated_mods[$mod_id]}"
+				if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
+					echo "删除旧版本mod文件: workshop-$mod_id"
+					rm -rf "$HOME/DST/mods/workshop-$mod_id"
+				fi
+				if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+					echo "删除旧版本mod文件: $mod_id"
+					rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+				fi
+			done
+
+			howtostart "$cluster_name" -AUTO
         else
             get_playerList "$cluster_name"
             if [ "$have_player" = false ]; then
                 echo "服务器无玩家，准备更新mod..."
-                c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
-                restart_server "$cluster_name" -AUTO
+				c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
+				close_server "$cluster_name" -AUTO
+
+				# 服务器已关闭，删除旧版本 mod 文件
+				for mod_id in "${!updated_mods[@]}"; do
+					mod_name="${updated_mods[$mod_id]}"
+					if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
+						echo "删除旧版本mod文件: workshop-$mod_id"
+						rm -rf "$HOME/DST/mods/workshop-$mod_id"
+					fi
+					if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+						echo "删除旧版本mod文件: $mod_id"
+						rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+					fi
+				done
+
+				howtostart "$cluster_name" -AUTO
             else
                 echo "服务器有玩家在线，暂不更新mod"
             fi
