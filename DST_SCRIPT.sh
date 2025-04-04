@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.10"
+script_version="1.8.11"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -645,14 +645,14 @@ addmod_by_http_or_steamcmd() {
 					echo "${mod_info_post[0]} [${mod_info_post[1]}] 是V2 Mod 后续将使用steamcmd下载"
 					V2_mods+=("$mod_num")
 				else
-					echo "${mod_info_post[0]} [${mod_info_post[1]}] 已存在"
+					echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V2 已存在\e[0m"
 				fi
 			else
 				# 如果文件夹不存在，追加到命令字符串中
 				if [ ! -f "$HOME/DST/mods/workshop-$mod_num/modmain.lua" ]; then
 					download_mod_by_http $mod_file_url $mod_num
 				else
-					echo "${mod_info_post[0]} [${mod_info_post[1]}] 已存在"
+					echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V1 已存在\e[0m"
 				fi
 			fi
 		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
@@ -667,20 +667,31 @@ addmod_by_http_or_steamcmd() {
 
 #自动添加存档所需的mod
 download_mod_by_http() {
-	mod_file_url=$1
-	mod_num=$2
-	temp_dir="/tmp/mod_${mod_num}"
-	
-	# 下载到临时目录
-	wget -q -O "$temp_dir/mod.zip" "$mod_file_url" || { echo "下载失败，保留旧 Mod"; return 1; }
-	unzip -tq "$temp_dir/mod.zip" || { echo "文件损坏，保留旧 Mod"; rm -rf "$temp_dir"; return 1; }
-	
-	# 替换旧 Mod
-	rm -rf "$mods_path/workshop-${mod_num}"
-	unzip -oq "$temp_dir/mod.zip" -d "$mods_path"
-	rm -rf "$temp_dir"
-}
+    mod_file_url=$1
+    mod_num=$2
+    temp_dir="/tmp/mod_${mod_num}"
+    mods_path="$HOME/DST/mods/workshop-$mod_num"
+    
+    # 创建临时目录（如果不存在）
+    mkdir -p "$temp_dir" || { echo "无法创建临时目录"; return 1; }
 
+    # 下载到临时目录
+    wget -q -O "$temp_dir/mod.zip" "$mod_file_url" || { echo "下载失败，保留旧 Mod"; return 1; }
+    
+    # 静默测试压缩包（不输出任何信息）
+    unzip -tq "$temp_dir/mod.zip" >/dev/null 2>&1 || { 
+        echo "文件损坏，保留旧 Mod"; 
+        rm -rf "$temp_dir"; 
+        return 1; 
+    }
+    
+    # 替换旧 Mod（静默解压）
+    rm -rf "$mods_path/workshop-${mod_num}"
+    unzip -oq "$temp_dir/mod.zip" -d "$mods_path" >/dev/null 2>&1
+    
+    rm -rf "$temp_dir"
+    echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V1 下载完成\e[0m"
+}
 #主菜单
 main() {
 	tput setaf 2
