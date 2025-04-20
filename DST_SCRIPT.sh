@@ -446,9 +446,22 @@ start_server_check_select() {
 			fi
 		fi
 
-		# 新增判断：检查是否有 "Error during game initialization!" 错误
 		if [[ $(grep --text "Error during game initialization!" -c "$logpath_flag") -gt 0 ]]; then
-			echo -e "\r\e[1;31m$w_flag服务器出现游戏初始化错误，正在重新启动服务器。\e[0m"
+            echo -e "\r\e[1;31m$w_flag服务器出现游戏初始化错误，正在尝试删除上次更新的mod并重新启动服务器。\e[0m"
+            get_path_script_files "$cluster_name"
+            local updated_mods_file="$script_files_path/last_updated_mods.txt"
+            if [ -f "$updated_mods_file" ]; then
+                while read -r mod_id; do
+                    if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
+                        log_with_timestamp "删除可能导致错误的mod文件: workshop-$mod_id"
+                        rm -rf "$HOME/DST/mods/workshop-$mod_id"
+                    fi
+                    if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+                        log_with_timestamp "删除可能导致错误的mod文件: $mod_id"
+                        rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+                    fi
+                done < "$updated_mods_file"
+            fi
 			close_server "$cluster_name" "$auto_flag"
 			start_server "$cluster_name" "$auto_flag"
 			break
@@ -969,8 +982,10 @@ close_server_select() {
 				echo -en "\r$world_close_flag服务器正在发布公告..."
 				sleep 1.5
 			done
-			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
 			echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!\e[0m"
+			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
+			sleep 5
+			screen -S "$i" -p 0 -X stuff "c_shutdown(true) $(printf \\r)"
 		done
 
 		max_attempts=5
@@ -1170,6 +1185,13 @@ checkmodupdate() {
         
         # 定义日志文件路径
         log_file="$script_files_path/mod_update.log"
+
+        # 记录更新的mod到配置文件
+        local updated_mods_file="$script_files_path/last_updated_mods.txt"
+        > "$updated_mods_file"  # 清空文件
+        for mod_id in "${!updated_mods[@]}"; do
+            echo "$mod_id" >> "$updated_mods_file"
+        done
 
         if [ "$auto_update_anyway" == "true" ]; then
             echo "准备更新mod..."
