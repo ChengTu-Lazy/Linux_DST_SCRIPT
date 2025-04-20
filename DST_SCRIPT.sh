@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.11"
+script_version="1.8.12"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -446,6 +446,14 @@ start_server_check_select() {
 			fi
 		fi
 
+		# 新增判断：检查是否有 "Error during game initialization!" 错误
+		if [[ $(grep --text "Error during game initialization!" -c "$logpath_flag") -gt 0 ]]; then
+			echo -e "\r\e[1;31m$w_flag服务器出现游戏初始化错误，正在重新启动服务器。\e[0m"
+			close_server "$cluster_name" "$auto_flag"
+			start_server "$cluster_name" "$auto_flag"
+			break
+		fi
+
 		# mod检测和下载完成，服务器检测未完成
 		if [[ $(grep --text "Sim paused" -c "$logpath_flag") -gt 0 || $(grep --text "shard LUA is now ready!" -c "$logpath_flag") -gt 0 ]] && [ $mod_flag == 0 ] && [ $download_flag == 0 ] && [ "$check_flag" == 1 ]; then
 			echo -e "\r\e[92m$w_flag服务器开启成功!!!                          \e[0m"
@@ -657,13 +665,51 @@ addmod_by_http_or_steamcmd() {
 			fi
 		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
 
-		download_mod_by_steamcmd ${V2_mods[@]}
+		download_ensure_all_success ${V2_mods[@]}
 
 		echo -e "\e[92mMod添加完成!!!\e[0m"
 	else
 		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
 	fi
 }
+
+# 下载指定 Mod 列表，直到全部成功
+download_ensure_all_success() {
+	local mods_to_download=("$@")
+	local try_count=1
+
+	while [ ${#mods_to_download[@]} -gt 0 ]; do
+		log_with_timestamp "\n🎯 第 $try_count 次尝试下载以下Mod：${mods_to_download[*]}"
+
+		# 调用steamcmd进行下载
+		download_mod_by_steamcmd "${mods_to_download[@]}"
+		sleep 1
+
+		# 检查哪些仍未下载成功
+		local failed_mods=()
+		for mod_num in "${mods_to_download[@]}"; do
+			mod_path="$HOME/Steam/steamapps/workshop/content/322330/$mod_num/modmain.lua"
+			if [ ! -f "$mod_path" ]; then
+				log_with_timestamp "\e[33m[仍未成功] Mod $mod_num 未找到modmain.lua\e[0m"
+				failed_mods+=("$mod_num")
+			else
+				log_with_timestamp "\e[92m[成功] Mod $mod_num 下载完成\e[0m"
+			fi
+		done
+
+		# 更新待下载列表
+		mods_to_download=("${failed_mods[@]}")
+		try_count=$((try_count + 1))
+
+		if [ ${#mods_to_download[@]} -gt 0 ]; then
+			log_with_timestamp "\e[33m部分Mod仍未下载成功，准备重新尝试...\e[0m"
+			sleep 2
+		fi
+	done
+
+	log_with_timestamp "\e[92m✅ 所有Steamcmd Mod已成功下载完毕！\e[0m"
+}
+
 
 #自动添加存档所需的mod
 download_mod_by_http() {
@@ -692,6 +738,7 @@ download_mod_by_http() {
     rm -rf "$temp_dir"
     echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V1 下载完成\e[0m"
 }
+
 #主菜单
 main() {
 	tput setaf 2
@@ -926,7 +973,7 @@ close_server_select() {
 			echo -e "\r\e[92m$world_close_flag服务器公告发布完毕!!!\e[0m"
 		done
 
-		max_attempts=3
+		max_attempts=5
 		attempt=0
 
 		while ((attempt < max_attempts)); do
@@ -1103,14 +1150,14 @@ checkmodupdate() {
             current_version_lower=$(echo "$current_version" | tr '[:upper:]' '[:lower:]')
             online_version_lower=$(echo "$online_version" | tr '[:upper:]' '[:lower:]')
 
-            if [ "$current_version_lower" != "$online_version_lower" ]; then
-                echo -e "\e[33mMod [$mod_name] 有更新:"
-                echo -e "当前版本: $current_version"
-                echo -e "最新版本: $online_version\e[0m"
+            if [ -n "$online_version_lower" ] && [ "$online_version_lower" != "null" ] && [ "$current_version_lower" != "$online_version_lower" ]; then
+                log_with_timestamp "\e[33mMod [$mod_name] 有更新:"
+                log_with_timestamp "当前版本: $current_version"
+                log_with_timestamp "最新版本: $online_version\e[0m"
                 has_mods_update=true
 				updated_mods["$mod_id"]="$mod_name"
             else
-                echo -e "\e[92mMod [$mod_name] 已是最新版本 ($current_version)\e[0m"
+                echo -e "\e[92mMod [$mod_name] [$mod_id] 已是最新版本 ($current_version)\e[0m"
             fi
         fi
     done < <(grep --text "modinfo $timestamp" "$server_log_path_main")
@@ -1121,6 +1168,9 @@ checkmodupdate() {
         get_path_script_files "$cluster_name"
         auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
         
+        # 定义日志文件路径
+        log_file="$script_files_path/mod_update.log"
+
         if [ "$auto_update_anyway" == "true" ]; then
             echo "准备更新mod..."
             c_announce="由于mod有更新，服务器即将重启，给您带来的不便还请谅解！！！"
@@ -1130,16 +1180,16 @@ checkmodupdate() {
 			for mod_id in "${!updated_mods[@]}"; do
 				mod_name="${updated_mods[$mod_id]}"
 				if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
-					echo "删除旧版本mod文件: workshop-$mod_id"
+					log_with_timestamp "删除旧版本mod文件: workshop-$mod_id    $mod_name"
 					rm -rf "$HOME/DST/mods/workshop-$mod_id"
 				fi
 				if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
-					echo "删除旧版本mod文件: $mod_id"
+					log_with_timestamp "删除旧版本mod文件: $mod_id   $mod_name"
 					rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
 				fi
 			done
 
-			howtostart "$cluster_name" -AUTO
+			howtostart "$cluster_name" -AUTO 
         else
             get_playerList "$cluster_name"
             if [ "$have_player" = false ]; then
@@ -1151,11 +1201,11 @@ checkmodupdate() {
 				for mod_id in "${!updated_mods[@]}"; do
 					mod_name="${updated_mods[$mod_id]}"
 					if [ -d "$HOME/DST/mods/workshop-$mod_id" ]; then
-						echo "删除旧版本mod文件: workshop-$mod_id"
+						log_with_timestamp "删除旧版本mod文件: workshop-$mod_id   $mod_name"
 						rm -rf "$HOME/DST/mods/workshop-$mod_id"
 					fi
 					if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
-						echo "删除旧版本mod文件: $mod_id"
+						log_with_timestamp "删除旧版本mod文件: $mod_id   $mod_name"
 						rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
 					fi
 				done
@@ -1168,6 +1218,15 @@ checkmodupdate() {
     else
         echo -e "\e[92m${DST_now}: 所有mod均为最新版本\e[0m"
     fi
+}
+
+log_with_timestamp() {
+	# 获取脚本文件所在路径
+	get_path_script_files "$cluster_name"
+	# 定义日志文件路径
+	log_file="$script_files_path/mod_update.log"
+	echo -e $1
+    echo "$(date +%Y-%m-%d\ %H:%M:%S) $1" >> "$log_file"
 }
 
 # 通过API获取mod信息（请求超时为10s，超时等待2s重新请求，最多请求5次
@@ -1249,7 +1308,7 @@ checkprocess_select() {
 			echo "$world_check_flag服务器运行正常"
 		fi
 	else
-		echo "$world_check_flag服务器已经关闭,自动开启中。。。"
+		log_with_timestamp  "$world_check_flag服务器已经关闭,自动开启中。。。"
 		start_server_select "$cluster_name" "$process_name_check" "$script_name" -AUTO
 		start_server_check_select "$world_check_flag" "$log_path" -AUTO
 	fi
