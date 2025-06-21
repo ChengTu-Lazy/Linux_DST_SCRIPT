@@ -27,7 +27,7 @@ SCRIPT_NAME=$(basename "$0")
 init() {
 	cluster_name=$1
 	if [ "$cluster_name" == "" ]; then
-		ehco "存档名有误"
+		echo "存档名有误"
 		return 0
 	fi
 	# 获取存档所在路径
@@ -295,7 +295,7 @@ howtostart() {
 	check_player=$3
 	get_cluster_flag "$cluster_name"
 
-	addmod_by_http_or_steamcmd "$cluster_name" "$auto_flag"
+	addmod_by_dst "$cluster_name" "$auto_flag"
 
 	get_process_name "$cluster_name"
 	(case $cluster_flag in
