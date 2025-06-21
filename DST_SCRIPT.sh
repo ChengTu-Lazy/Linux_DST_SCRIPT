@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.12"
+script_version="1.8.13"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -353,13 +353,15 @@ start_server_select() {
 start_server_check() {
 	cluster_name=$1
 	start_time=$(date +%s)
+	# 设定超时时间为 300 秒（5 分钟）
+	TIMEOUT=300 
 	get_process_name "$cluster_name"
 	get_path_server_log "$cluster_name"
 	if [[ "$(screen -ls | grep --text -c "\<$process_name_master\>")" -gt 0 ]]; then
-		start_server_check_select "地上" "$server_log_path_master"
+		start_server_check_select "地上" "$server_log_path_master" "" $start_time $TIMEOUT
 	fi
 	if [[ "$(screen -ls | grep --text -c "\<$process_name_caves\>")" -gt 0 ]]; then
-		start_server_check_select "地下" "$server_log_path_caves"
+		start_server_check_select "地下" "$server_log_path_caves" "" $start_time $TIMEOUT
 	fi
 	end_time=$(date +%s)
 	cost_time=$((end_time - start_time))
@@ -384,11 +386,20 @@ start_server_check_select() {
 	w_flag=$1
 	logpath_flag=$2
 	auto_flag=$3
+	start_time=$4
+	TIMEOUT=$5
 	mod_flag=1
 	download_flag=1
 	check_flag=1
 	# 该进程存在时才进行判定
 	while :; do
+		current_time=$(date +%s)
+		elapsed_time=$((current_time - start_time))
+		if [ $elapsed_time -gt $TIMEOUT ]; then
+			log_with_timestamp "\r\e[1;31m$w_flag服务器启动超时，请检查网络或配置。正在关闭服务器。\e[0m"
+			close_server "$cluster_name" "$auto_flag"
+			return 0
+		fi
 		get_path_server_log "$cluster_name"
 		if [ $mod_flag == 1 ] && [[ $(grep --text "[Workshop] OnDownloadPublishedFile" -c "$logpath_flag") -gt 0 ]] && [ $download_flag == 1 ]; then
 			sleep 1
