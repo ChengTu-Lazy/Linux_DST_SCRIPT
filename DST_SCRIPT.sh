@@ -14,7 +14,7 @@ DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
 script_version="1.8.13"
 # git加速链接
-use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
+use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
 # 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
 # 脚本当前所在目录
@@ -2067,9 +2067,9 @@ get_latest_version() {
 	echo "请输入 Y/y 同意 或者 N/n 拒绝并使用官方链接,推荐使用加速链接,失效了再用原版链接"
 	read -r use_acceleration
 	if [ "${use_acceleration}" == "Y" ] || [ "${use_acceleration}" == "y" ]; then
-		git clone "${use_acceleration_url}"
+		git clone --branch dstMode "${use_acceleration_url}"
 	elif [ "${use_acceleration}" == "N" ] || [ "${use_acceleration}" == "n" ]; then
-		git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+		git clone --branch dstMode "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
 	else
 		echo "输入有误,请重新输入"
 		get_latest_version
