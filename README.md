@@ -54,11 +54,11 @@
 
 #### 📋纯命令行操作初始化环境
 ```bash
-git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod 777 DST_SCRIPT.sh && ./DST_SCRIPT.sh
+git clone --branch dstMode "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod 777 DST_SCRIPT.sh && ./DST_SCRIPT.sh
 ```
 Github网络环境不允许的话使用：
 ```bash
- git clone "https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod 777 DST_SCRIPT.sh && ./DST_SCRIPT.sh
+ git clone --branch dstMode "https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod 777 DST_SCRIPT.sh && ./DST_SCRIPT.sh
 ```
 
 #### 📋CLI命令
