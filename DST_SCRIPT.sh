@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.13"
+script_version="1.8.14"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -27,7 +27,7 @@ SCRIPT_NAME=$(basename "$0")
 init() {
 	cluster_name=$1
 	if [ "$cluster_name" == "" ]; then
-		ehco "存档名有误"
+		echo "存档名有误"
 		return 0
 	fi
 	# 获取存档所在路径
@@ -314,7 +314,7 @@ howtostart() {
 			echo "存档没有内容,请自行创建！！！"
 			;;
 		esac)
-	if [ "$cluster_flag" == "" ]; then
+	if [ -z "$cluster_flag" ]; then
 		echo "出错了,请联系作者QQ1549737287!!!"
 	else
 		start_server_check "$cluster_name"
@@ -368,7 +368,7 @@ start_server_check() {
 	cost_minutes=$((cost_time / 60))
 	cost_seconds=$((cost_time % 60))
 	cost_echo="$cost_minutes分$cost_seconds秒"
-	if [ $cost_echo == "00分00秒" ] || [ $cost_echo == "0分0秒" ]; then
+	if [ "$cost_echo" == "00分00秒" ] || [ "$cost_echo" == "0分0秒" ]; then
 		start_server_check_fix
 	else
 		echo -e "\r\e[92m本次开服花费时间$cost_echo:\e[0m"
@@ -395,7 +395,7 @@ start_server_check_select() {
 	while :; do
 		current_time=$(date +%s)
 		elapsed_time=$((current_time - start_time))
-		if [ $elapsed_time -gt $TIMEOUT ]; then
+		if [ "$elapsed_time" -gt "$TIMEOUT" ]; then
 			log_with_timestamp "\r\e[1;31m$w_flag服务器启动超时，请检查网络或配置。正在关闭服务器。\e[0m"
 			close_server "$cluster_name" "$auto_flag"
 			return 0
@@ -630,12 +630,9 @@ addmod_by_dst() {
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
 		cd "${gamesPath}"/mods || exit
-		if [ -n "$dedicated_server_mods_setup" ]; then
-			rm -rf "$dedicated_server_mods_setup"
-			sleep 0.1
-			echo "" >>"$dedicated_server_mods_setup"
-			sleep 0.1
-		fi
+		rm -rf "$dedicated_server_mods_setup"
+		sleep 0.1
+		touch "$dedicated_server_mods_setup"
 		grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2 | while IFS= read -r line; do
 
 			echo "ServerModSetup(\"$line\")" >>"$dedicated_server_mods_setup"
@@ -662,12 +659,9 @@ addmod_by_http_or_steamcmd() {
 	modoverrides_path=$cluster_main/modoverrides.lua
 	if [ -e "$modoverrides_path" ]; then
 		echo "正在将开启存档所需的mod添加进服务器配置文件中..."
-		if [ -n "$dedicated_server_mods_setup" ]; then
-			rm -rf "$dedicated_server_mods_setup"
-			sleep 0.1
-			echo "" >>"$dedicated_server_mods_setup"
-			sleep 0.1
-		fi
+		rm -rf "$dedicated_server_mods_setup"
+		sleep 0.1
+		touch "$dedicated_server_mods_setup"
 		V2_mods=()
 		while IFS= read -r mod_num; do
 			get_mod_info $mod_num
@@ -687,6 +681,11 @@ addmod_by_http_or_steamcmd() {
 					echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V1 已存在\e[0m"
 				fi
 			fi
+		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
+
+		# 重新写入ServerModSetup配置
+		while IFS= read -r mod_num; do
+			echo "ServerModSetup(\"$mod_num\")" >>"$dedicated_server_mods_setup"
 		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
 
 		download_ensure_all_success ${V2_mods[@]}
@@ -1056,7 +1055,7 @@ checkupdate() {
     # 判断一下对应开启的版本
     # 获取最新buildid
     echo "正在获取最新buildid。。。"
-    export buildid_version_path=$buildid_version_path
+    export buildid_version_path="$buildid_version_path"
     cd "$HOME"/steamcmd || exit
 
     # 修改重试次数和间隔
