@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.14"
+script_version="1.8.15"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -21,6 +21,176 @@ os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' 
 script_path=$(pwd)
 # 脚本当前名称
 SCRIPT_NAME=$(basename "$0")
+
+STEAMCMD_BIN=""
+
+manual_steamcmd_complete() {
+	[ -x "$HOME/steamcmd/steamcmd.sh" ] &&
+		[ -s "$HOME/steamcmd/linux32/libstdc++.so.6" ] &&
+		[ -s "$HOME/steamcmd/linux32/crashhandler.so" ]
+}
+
+steamcmd_available() {
+	command -v steamcmd >/dev/null 2>&1 || manual_steamcmd_complete
+}
+
+install_steamcmd_by_apt() {
+	if [ "$os" != "Ubuntu" ] && [ "$os" != "DebianGNU/" ]; then
+		return 1
+	fi
+
+	echo "优先通过 apt 安装 SteamCMD..."
+	sudo apt-get -y update
+	sudo apt-get -y install ca-certificates curl tar
+
+	if [ "$os" == "Ubuntu" ]; then
+		sudo apt-get -y install software-properties-common
+		if command -v add-apt-repository >/dev/null 2>&1; then
+			sudo add-apt-repository -y multiverse
+		fi
+	fi
+
+	sudo dpkg --add-architecture i386
+	sudo apt-get -y update
+	sudo apt-get -y install steamcmd
+}
+
+install_steamcmd_manually() {
+	local steamcmd_url="https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz"
+	local steamcmd_archive
+
+	steamcmd_archive=$(mktemp) || return 1
+	mkdir -p "$HOME/steamcmd"
+
+	echo "apt 安装 SteamCMD 不可用，改用官方压缩包安装..."
+	if ! curl -fL --connect-timeout 15 --max-time 180 --retry 5 --retry-delay 2 -o "$steamcmd_archive" "$steamcmd_url"; then
+		echo -e "\e[1;31mSteamCMD 压缩包下载失败，请检查网络或代理。\e[0m"
+		rm -f "$steamcmd_archive"
+		return 1
+	fi
+
+	if ! tar -tzf "$steamcmd_archive" >/dev/null; then
+		echo -e "\e[1;31mSteamCMD 压缩包校验失败，下载文件不完整。\e[0m"
+		rm -f "$steamcmd_archive"
+		return 1
+	fi
+
+	if ! tar -xzf "$steamcmd_archive" -C "$HOME/steamcmd"; then
+		echo -e "\e[1;31mSteamCMD 解压失败，请检查目录权限和磁盘空间。\e[0m"
+		rm -f "$steamcmd_archive"
+		return 1
+	fi
+	rm -f "$steamcmd_archive"
+
+	if [ ! -s "$HOME/steamcmd/linux32/libstdc++.so.6" ] || [ ! -s "$HOME/steamcmd/linux32/crashhandler.so" ]; then
+		echo -e "\e[1;31mSteamCMD 解压不完整，缺少 linux32 下的 so 文件。\e[0m"
+		return 1
+	fi
+
+	chmod +x "$HOME/steamcmd/steamcmd.sh"
+}
+
+ensure_steamcmd() {
+	if command -v steamcmd >/dev/null 2>&1; then
+		STEAMCMD_BIN=$(command -v steamcmd)
+		return 0
+	fi
+
+	if manual_steamcmd_complete; then
+		STEAMCMD_BIN="$HOME/steamcmd/steamcmd.sh"
+		return 0
+	fi
+
+	if install_steamcmd_by_apt && command -v steamcmd >/dev/null 2>&1; then
+		STEAMCMD_BIN=$(command -v steamcmd)
+		return 0
+	fi
+
+	if install_steamcmd_manually; then
+		STEAMCMD_BIN="$HOME/steamcmd/steamcmd.sh"
+		return 0
+	fi
+
+	return 1
+}
+
+run_steamcmd() {
+	if ! ensure_steamcmd; then
+		echo -e "\e[1;31mSteamCMD 安装或定位失败，无法继续。\e[0m"
+		return 1
+	fi
+
+	if [ "$STEAMCMD_BIN" == "$HOME/steamcmd/steamcmd.sh" ]; then
+		(cd "$HOME/steamcmd" && "$STEAMCMD_BIN" "$@")
+	else
+		"$STEAMCMD_BIN" "$@"
+	fi
+}
+
+steam_workshop_candidates() {
+	printf '%s\n' \
+		"$HOME/.steam/SteamApps/workshop" \
+		"$HOME/Steam/steamapps/workshop" \
+		"$HOME/.local/share/Steam/steamapps/workshop" \
+		"$HOME/.steam/steam/steamapps/workshop"
+}
+
+get_workshop_path() {
+	local workshop_path
+	while IFS= read -r workshop_path; do
+		if [ -d "$workshop_path/content/322330" ]; then
+			echo "$workshop_path"
+			return 0
+		fi
+	done < <(steam_workshop_candidates)
+
+	if command -v steamcmd >/dev/null 2>&1; then
+		echo "$HOME/.steam/SteamApps/workshop"
+	else
+		echo "$HOME/Steam/steamapps/workshop"
+	fi
+}
+
+find_workshop_modmain() {
+	local mod_id=$1
+	local workshop_path
+	while IFS= read -r workshop_path; do
+		if [ -f "$workshop_path/content/322330/$mod_id/modmain.lua" ]; then
+			echo "$workshop_path/content/322330/$mod_id/modmain.lua"
+			return 0
+		fi
+	done < <(steam_workshop_candidates)
+	return 1
+}
+
+workshop_mod_exists() {
+	find_workshop_modmain "$1" >/dev/null
+}
+
+remove_workshop_mod() {
+	local mod_id=$1
+	local workshop_path
+	while IFS= read -r workshop_path; do
+		if [ -d "$workshop_path/content/322330/$mod_id" ]; then
+			rm -rf "$workshop_path/content/322330/$mod_id"
+		fi
+	done < <(steam_workshop_candidates)
+}
+
+remove_workshop_appmanifest() {
+	local workshop_path
+	while IFS= read -r workshop_path; do
+		rm -f "$workshop_path/appworkshop_322330.acf" "$workshop_path/content/322330/appworkshop_322330.acf"
+	done < <(steam_workshop_candidates)
+}
+
+clean_steam_userdata() {
+	local steam_user_path
+	for steam_user_path in "$HOME/Steam/userdata" "$HOME/.steam/userdata" "$HOME/.local/share/Steam/userdata"; do
+		find "$steam_user_path" -type f -mtime +3 -delete 2>/dev/null
+		find "$steam_user_path" -type d -empty -delete 2>/dev/null
+	done
+}
 
 ##基础数据的获取
 #数据统一初始化
@@ -336,12 +506,14 @@ start_server_select() {
 		shard_name="Caves"
 	fi
 	get_path_dontstarve_dedicated_server_nullrenderer "$cluster_name"
+	local workshop_path
+	workshop_path=$(get_workshop_path)
 	echo "#!/bin/bash
 	cd \"$dontstarve_dedicated_server_nullrenderer_path\" || exit
 	run_shared=(./$dontstarve_dedicated_server_nullrenderer)
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
-	run_shared+=(-ugc_directory  $HOME/Steam/steamapps/workshop/)
+	run_shared+=(-ugc_directory \"$workshop_path/\")
 	run_shared+=(-monitor_parent_process $)
 	\"\${run_shared[@]}\" -shard $shard_name" >"$script_files_path"/"$script_start_server"
 	grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g' >"$script_files_path"/"cluster_game_buildid.txt"
@@ -467,9 +639,9 @@ start_server_check_select() {
                         log_with_timestamp "删除可能导致错误的mod文件: workshop-$mod_id"
                         rm -rf "$HOME/DST/mods/workshop-$mod_id"
                     fi
-                    if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+                    if workshop_mod_exists "$mod_id"; then
                         log_with_timestamp "删除可能导致错误的mod文件: $mod_id"
-                        rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+                        remove_workshop_mod "$mod_id"
                     fi
                 done < "$updated_mods_file"
             fi
@@ -523,9 +695,11 @@ start_server_check_fix() {
 		echo "##########################"
 		echo ""
 		sudo apt-get -y update
+		sudo dpkg --add-architecture i386
+		sudo apt-get -y update
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
-		sudo apt-get -y install libcurl3-gnutls:i386
+		sudo apt-get -y install libcurl3-gnutls:i386 || sudo apt-get -y install libcurl4-gnutls-dev:i386 || true
 	elif
 		[ "$os" == "DebianGNU/" ]
 	then
@@ -536,12 +710,13 @@ start_server_check_fix() {
 		echo "##########################"
 		echo ""
 		sudo apt-get -y update
+		sudo dpkg --add-architecture i386
+		sudo apt-get -y update
 
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libc6-i386
-		sudo apt-get -y install libcurl4-gnutls-dev:i386
-		sudo apt-get -y install libcurl3-gnutls:i386
+		sudo apt-get -y install libcurl3-gnutls:i386 || sudo apt-get -y install libcurl4-gnutls-dev:i386 || true
 
 	elif
 		[ "$os" == "CentOS" ]
@@ -572,7 +747,7 @@ start_server_check_fix() {
 
 # 通过steamcmd下载mod
 download_mod_by_steamcmd() {
-	V2_mods=$1
+	local V2_mods=("$@")
 	# mod所在目录
 	get_cluster_main "$cluster_name"
 	get_dedicated_server_mods_setup "$cluster_name"
@@ -580,7 +755,7 @@ download_mod_by_steamcmd() {
 
 	if [ -e "$modoverrides_path" ]; then
 		# 删除appworkshop_322330.acf
-		rm -rf "$HOME/Steam/steamapps/workshop/content/322330/appworkshop_322330.acf"
+		remove_workshop_appmanifest
 		# 收集所有项目ID到字符串中
 		workshop_commands="+login anonymous "
 		# 统一用steamcmd下载V2_mods
@@ -592,7 +767,7 @@ download_mod_by_steamcmd() {
 				fi
 
 				# 如果文件夹不存在，追加到命令字符串中
-				if [ ! -f "$HOME/Steam/steamapps/workshop/content/322330/$mod_id/modmain.lua" ]; then
+				if ! workshop_mod_exists "$mod_id"; then
 					# 如果文件夹存在，追加到命令字符串中
 					workshop_commands+="+workshop_download_item 322330 $mod_id "
 				else
@@ -610,9 +785,8 @@ download_mod_by_steamcmd() {
 			log_file="$HOME/Steam/logs/stderr.txt"
 
 			# 执行命令并将输出写入日志文件和终端
-			cd $HOME/steamcmd || exit
-			./steamcmd.sh +quit
-			./steamcmd.sh $workshop_commands 2>&1 | tee "$log_file"
+			run_steamcmd +quit
+			run_steamcmd $workshop_commands 2>&1 | tee "$log_file"
 		fi
 	else
 		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
@@ -667,7 +841,7 @@ addmod_by_http_or_steamcmd() {
 			get_mod_info $mod_num
 			mod_file_url=${mod_info_post[2]}
 			if [ "$mod_file_url" == "" ]; then
-				if [ ! -f "$HOME/Steam/steamapps/workshop/content/322330/$mod_num/modmain.lua" ]; then
+				if ! workshop_mod_exists "$mod_num"; then
 					echo "${mod_info_post[0]} [${mod_info_post[1]}] 是V2 Mod 后续将使用steamcmd下载"
 					V2_mods+=("$mod_num")
 				else
@@ -688,7 +862,7 @@ addmod_by_http_or_steamcmd() {
 			echo "ServerModSetup(\"$mod_num\")" >>"$dedicated_server_mods_setup"
 		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
 
-		download_ensure_all_success ${V2_mods[@]}
+		download_ensure_all_success "${V2_mods[@]}"
 
 		echo -e "\e[92mMod添加完成!!!\e[0m"
 	else
@@ -711,8 +885,8 @@ download_ensure_all_success() {
 		# 检查哪些仍未下载成功
 		local failed_mods=()
 		for mod_num in "${mods_to_download[@]}"; do
-			mod_path="$HOME/Steam/steamapps/workshop/content/322330/$mod_num/modmain.lua"
-			if [ ! -f "$mod_path" ]; then
+			mod_path=$(find_workshop_modmain "$mod_num")
+			if [ -z "$mod_path" ]; then
 				log_with_timestamp "\e[33m[仍未成功] Mod $mod_num 未找到modmain.lua\e[0m"
 				failed_mods+=("$mod_num")
 			else
@@ -920,14 +1094,13 @@ restart_server() {
 # 更新游戏
 update_game() {
 	version_flag=$1
-	cd "$HOME/steamcmd" || exit
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
 	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
-		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	else
 		echo "同步最新测试版版游戏本体内容中。。。"
-		./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 	fi
 }
 
@@ -1056,8 +1229,6 @@ checkupdate() {
     # 获取最新buildid
     echo "正在获取最新buildid。。。"
     export buildid_version_path="$buildid_version_path"
-    cd "$HOME"/steamcmd || exit
-
     # 修改重试次数和间隔
     local max_retries=3  # 从5改为3
     local retry_count=0
@@ -1065,8 +1236,7 @@ checkupdate() {
 
     # 清理旧的Steam用户数据
     echo "清理3天前的Steam用户数据..."
-    find "$HOME/Steam/userdata" -type f -mtime +3 -delete 2>/dev/null
-    find "$HOME/Steam/userdata" -type d -empty -delete 2>/dev/null
+    clean_steam_userdata
 
     # 首先尝试通过API获取
     while [ $retry_count -lt $max_retries ]; do
@@ -1090,18 +1260,19 @@ checkupdate() {
     # 如果API获取失败，尝试通过steamcmd获取
     if [ "$success" != true ]; then
         echo "API获取失败，尝试通过steamcmd获取buildid..."
-        cd "$HOME/steamcmd" || exit
-        ./steamcmd.sh +login anonymous +app_info_update 1 +app_info_print 343050 +quit > steam_app_info.txt
+        local steam_app_info_file
+        steam_app_info_file=$(mktemp) || return 1
+        run_steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit > "$steam_app_info_file"
         
-        if [ -f "steam_app_info.txt" ]; then
-            buildid=$(grep -A 5 "\"public\"" steam_app_info.txt | grep "buildid" | cut -d '"' -f 4)
+        if [ -f "$steam_app_info_file" ]; then
+            buildid=$(grep -A 5 "\"public\"" "$steam_app_info_file" | grep "buildid" | cut -d '"' -f 4)
             if [ -n "$buildid" ]; then
                 echo "通过steamcmd成功获取buildid: $buildid"
                 echo "$buildid" >"$buildid_version_path"
                 success=true
             fi
-            rm steam_app_info.txt
         fi
+        rm -f "$steam_app_info_file"
     fi
 
     if [ "$success" != true ]; then
@@ -1215,9 +1386,9 @@ checkmodupdate() {
 					log_with_timestamp "删除旧版本mod文件: workshop-$mod_id    $mod_name"
 					rm -rf "$HOME/DST/mods/workshop-$mod_id"
 				fi
-				if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+				if workshop_mod_exists "$mod_id"; then
 					log_with_timestamp "删除旧版本mod文件: $mod_id   $mod_name"
-					rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+					remove_workshop_mod "$mod_id"
 				fi
 			done
 
@@ -1236,9 +1407,9 @@ checkmodupdate() {
 						log_with_timestamp "删除旧版本mod文件: workshop-$mod_id   $mod_name"
 						rm -rf "$HOME/DST/mods/workshop-$mod_id"
 					fi
-					if [ -d "$HOME/Steam/steamapps/workshop/content/322330/$mod_id" ]; then
+					if workshop_mod_exists "$mod_id"; then
 						log_with_timestamp "删除旧版本mod文件: $mod_id   $mod_name"
-						rm -rf "$HOME/Steam/steamapps/workshop/content/322330/$mod_id"
+						remove_workshop_mod "$mod_id"
 					fi
 				done
 
@@ -1808,17 +1979,16 @@ PreLibrary() {
 		echo ""
 		sudo apt-get -y clean
 		sudo apt-get -y update
-		sudo apt-get -y wget
+		sudo apt-get -y install wget curl ca-certificates tar
 
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libc6-i386
-		sudo apt-get -y install libcurl4-gnutls-dev:i386
-		sudo apt-get -y install libcurl3-gnutls:i386
 		sudo dpkg --add-architecture i386
 
-		sudo apt-get -y install lib64gcc1
-		sudo apt-get -y install lib32gcc1
+		sudo apt-get -y update
+		sudo apt-get -y install libcurl3-gnutls:i386 || sudo apt-get -y install libcurl4-gnutls-dev:i386 || true
+		sudo apt-get -y install lib32gcc-s1 || sudo apt-get -y install lib32gcc1
 
 		sudo apt-get -y install libcurl4-gnutls-dev
 
@@ -1839,7 +2009,7 @@ PreLibrary() {
 		echo "##########################"
 		echo ""
 		sudo yum -y update
-		sudo yum -y wget
+		sudo yum -y install wget curl tar
 
 		# 加载 32bit 库
 		sudo yum -y install glibc.i686 libstdc++.i686 libcurl.i686
@@ -1857,17 +2027,16 @@ PreLibrary() {
 		echo ""
 		sudo apt-get -y clean
 		sudo apt-get -y update
-		sudo apt-get -y wget
+		sudo apt-get -y install wget curl ca-certificates tar
 
 		sudo apt-get -y install libstdc++6
 		sudo apt-get -y install lib32stdc++6
 		sudo apt-get -y install libc6-i386
-		sudo apt-get -y install libcurl4-gnutls-dev:i386
-		sudo apt-get -y install libcurl3-gnutls:i386
 		sudo dpkg --add-architecture i386
 
-		sudo apt-get -y install lib64gcc1
-		sudo apt-get -y install lib32gcc1
+		sudo apt-get -y update
+		sudo apt-get -y install libcurl3-gnutls:i386 || sudo apt-get -y install libcurl4-gnutls-dev:i386 || true
+		sudo apt-get -y install lib32gcc-s1 || sudo apt-get -y install lib32gcc1
 
 		sudo apt-get -y install libcurl4-gnutls-dev
 
@@ -1928,6 +2097,7 @@ prepare() {
 	check_the_library zip unzip
 	check_the_library git
 	check_the_library jq
+	check_the_library curl
 	if [ -d "./dst" ]; then
 		echo "新脚本的目录结构已更改，可能需要重新下载游戏本体，请稍后。。。"
 		mv dst/ DST/
@@ -1935,27 +2105,21 @@ prepare() {
 	if [ -d "./dst_beta" ]; then
 		mv dst_beta/ DST_BETA/
 	fi
-	if [ ! -d "./steamcmd" ] || [ ! -d "./DST" ] || [ ! -d "./.klei/DoNotStarveTogether" ]; then
+	if [ ! -d "$DST_DEFAULT_PATH" ] || [ ! -d "$DST_SAVE_PATH" ] || ! steamcmd_available; then
 		PreLibrary
-		mkdir "$DST_DEFAULT_PATH"
-
-		mkdir "$HOME/steamcmd"
-		mkdir "$HOME/.klei"
-		mkdir "$HOME/.klei/DoNotStarveTogether"
-		mkdir "${DST_SAVE_PATH}"
-		cd "$HOME/steamcmd" || exit
-		curl -sqL "https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz" | tar zxvf -
+		mkdir -p "$DST_DEFAULT_PATH" "$HOME/.klei" "$DST_SAVE_PATH"
+		if ! ensure_steamcmd; then
+			exit 1
+		fi
 	fi
 	# 下载游戏本体
 	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
 		echo "正在下载饥荒游戏本体！！！"
-		cd "$HOME/steamcmd" || exit
-		./steamcmd.sh +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
 	fi
 	# if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 	# 	echo "正在下载饥荒测试版游戏本体！！！"
-	# 	cd "$HOME/steamcmd" || exit
-	# 	./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+	# 	run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 	# fi
 }
 
@@ -1984,23 +2148,21 @@ change_game_version() {
 	elif [ "$game_version" == "3" ]; then
 		echo "更改该存档服务端版本为测试版32位!"
 		if [ ! -d "./DST_BETA" ]; then
-			mkdir "$DST_BETA_PATH"
+			mkdir -p "$DST_BETA_PATH"
 		fi
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
 		echo "更改该存档服务端版本为测试版64位!"
 		if [ ! -d "./DST_BETA" ]; then
-			mkdir "$DST_BETA_PATH"
+			mkdir -p "$DST_BETA_PATH"
 		fi
 		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
 			echo "正在下载饥荒测试版游戏本体！！！"
-			cd "$HOME/steamcmd" || exit
-			./steamcmd.sh +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+			run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
 		fi
 		sed -i "1s/${game_version_now}/测试版64位/g" "$script_files_path/config.txt"
 	else
