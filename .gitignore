@@ -1,0 +1,11 @@
+config.json
+*.log
+.env
+dist/
+dst-ws-client
+dst-ws-client.exe
+DST_LINUX/
+steamcmd-win/
+.steam-*
+.proxy-relay-*.ps1
+.run-steamcmd-update.sh

@@ -1,0 +1,68 @@
+name: Release dst-ws-client
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: linux-amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Build single-file program
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/dst-ws-client-linux-amd64 ./dst-ws-client.go
+          chmod +x dist/dst-ws-client-linux-amd64
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dst-ws-client-linux-amd64
+          body: |
+            本版本主要新增 `dst-ws-client` 单文件 WebSocket 客户端，并修复 DST 服务端自动更新判断逻辑。
+
+            ### 新增
+
+            - 新增 `dst-ws-client.go`
+              - 主动连接 Koishi `dst-search` 插件的 WebSocket 服务
+              - 支持 token 鉴权
+              - 支持调用 `DST_SCRIPT.sh` 的 CLI 功能
+              - 编译后为 Linux amd64 单文件程序，运行时不依赖 Node、npm、Go 或第三方库
+            - 新增 GitHub Actions Release 工作流
+              - 推送 tag 后自动构建 `dst-ws-client-linux-amd64`
+              - 自动上传到 GitHub Release
+            - 新增 `config.example.json`，提供 WebSocket 客户端配置示例
+
+            ### 修复
+
+            - 重写 `DST_SCRIPT.sh` 的 `checkupdate()` 更新判断逻辑
+              - 不再依赖 `api.steamcmd.net` 的 buildid
+              - 改用 Steam 官方 `UpToDateCheck` 接口检查 `appid=322330`
+              - 基于 `version.txt` 判断真实游戏版本
+              - 只有更新前后版本号变化时才重启服务器
+              - 官方接口失败或返回异常时 fallback 到 `steamcmd app_update 343050 validate`
+
+            ### 文档
+
+            - README 增加 `dst-ws-client` 用法说明
+            - README 增加 Koishi `dst-search` 接入配置说明
+            - README 增加 Release 下载和本地编译说明
+          fail_on_unmatched_files: true

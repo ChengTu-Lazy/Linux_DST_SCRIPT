@@ -1,0 +1,10 @@
+{
+  "upstreamUrl": "ws://127.0.0.1:12000",
+  "scriptPath": "./DST_SCRIPT.sh",
+  "defaultCluster": "auto",
+  "clientReconnectMs": 1000,
+  "clientPingMs": 5000,
+  "clientReadTimeoutMs": 15000,
+  "clientRefreshMs": 30000,
+  "token": "test-token"
+}
