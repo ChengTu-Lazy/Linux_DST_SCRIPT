@@ -1222,96 +1222,105 @@ close_server_autoUpdate() {
 checkupdate() {
     cluster_name=$1
     get_path_games "$cluster_name"
-    # 保存buildid的位置
-    buildid_version_path="$gamesPath/bin/buildid.txt"
+    get_path_script_files "$cluster_name"
     DST_now=$(date +%Y年%m月%d日%H:%M)
-    # 判断一下对应开启的版本
-    # 获取最新buildid
-    echo "正在获取最新buildid。。。"
-    export buildid_version_path="$buildid_version_path"
-    # 修改重试次数和间隔
-    local max_retries=3  # 从5改为3
-    local retry_count=0
-    local success=false
+
+    local version_file="$gamesPath/version.txt"
+    local local_version=""
+    local new_version=""
+    local response=""
+    local curl_exit_status=0
+    local success=""
+    local up_to_date=""
+    local jq_status=0
+    local update_version_flag="BETA"
+    local fallback_reason=""
+
+    if [ "$buildid_version_flag" == "public" ]; then
+        update_version_flag="DEFAULT"
+    fi
+
+    if [ -f "$version_file" ]; then
+        local_version=$(tr -d '[:space:]' < "$version_file")
+    fi
+
+    update_game_and_restart_if_version_changed() {
+        local old_version=$1
+        local update_flag=$2
+
+        if [ "$update_flag" == "DEFAULT" ]; then
+            echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
+            update_game DEFAULT
+        else
+            echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
+            update_game BETA
+        fi
+
+        new_version=""
+        if [ -f "$version_file" ]; then
+            new_version=$(tr -d '[:space:]' < "$version_file")
+        fi
+
+        echo -e "\e[92m更新前版本号: ${old_version:-未知}\e[0m"
+        echo -e "\e[92m更新后版本号: ${new_version:-未知}\e[0m"
+
+        if [ "$new_version" != "$old_version" ]; then
+            auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+            c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
+            if [ "$auto_update_anyway" == "true" ]; then
+                restart_server "$cluster_name" -AUTO
+            else
+                restart_server "$cluster_name" -AUTO -NOBODY
+            fi
+        else
+            echo -e "\e[92m${DST_now}:已执行更新但版本号未变化，不重启\e[0m"
+        fi
+    }
 
     # 清理旧的Steam用户数据
     echo "清理3天前的Steam用户数据..."
     clean_steam_userdata
 
-    # 首先尝试通过API获取
-    while [ $retry_count -lt $max_retries ]; do
-        response=$(curl -s --connect-timeout 10 --max-time 10 'https://api.steamcmd.net/v1/info/343050')
-        curl_exit_status=$?
-
-        if [ $curl_exit_status -eq 0 ]; then
-            buildid=$(echo "$response" | jq -r '.data["343050"].depots.branches.public.buildid')
-            if [ -n "$buildid" ] && [ "$buildid" != "null" ]; then
-                echo "通过API成功获取buildid: $buildid"
-                echo "$buildid" >"$buildid_version_path"
-                success=true
-                break
-            fi
-        fi
-        echo "API请求失败，3秒后重试..."  # 从5秒改为3秒
-        sleep 3  # 从5改为3
-        ((retry_count++))
-    done
-
-    # 如果API获取失败，尝试通过steamcmd获取
-    if [ "$success" != true ]; then
-        echo "API获取失败，尝试通过steamcmd获取buildid..."
-        local steam_app_info_file
-        steam_app_info_file=$(mktemp) || return 1
-        run_steamcmd +login anonymous +app_info_update 1 +app_info_print 343050 +quit > "$steam_app_info_file"
-        
-        if [ -f "$steam_app_info_file" ]; then
-            buildid=$(grep -A 5 "\"public\"" "$steam_app_info_file" | grep "buildid" | cut -d '"' -f 4)
-            if [ -n "$buildid" ]; then
-                echo "通过steamcmd成功获取buildid: $buildid"
-                echo "$buildid" >"$buildid_version_path"
-                success=true
-            fi
-        fi
-        rm -f "$steam_app_info_file"
+    if [ -z "$local_version" ]; then
+        echo -e "\e[33m${DST_now}:未找到有效的version.txt，直接执行游戏更新...\e[0m"
+        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
+        return 0
     fi
 
-    if [ "$success" != true ]; then
-        echo "无法获取buildid，请检查网络连接或手动更新"
-        return 1
+    echo -e "\e[92m当前游戏服务端版本号: $local_version\e[0m"
+    echo "正在通过Steam官方接口检查游戏更新。。。"
+
+    response=$(curl -s --connect-timeout 10 --max-time 20 "http://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=322330&version=${local_version}")
+    curl_exit_status=$?
+
+    if [ $curl_exit_status -ne 0 ]; then
+        fallback_reason="官方接口请求失败"
+    else
+        success=$(jq -r '.response.success' 2>/dev/null <<< "$response")
+        jq_status=$?
+        if [ $jq_status -ne 0 ] || [ -z "$success" ] || [ "$success" == "null" ]; then
+            fallback_reason="官方接口返回异常，无法解析success"
+        elif [ "$success" != "true" ]; then
+            fallback_reason="官方接口返回success=$success"
+        else
+            up_to_date=$(jq -r '.response.up_to_date' 2>/dev/null <<< "$response")
+            jq_status=$?
+            if [ $jq_status -ne 0 ] || [ -z "$up_to_date" ] || [ "$up_to_date" == "null" ] || { [ "$up_to_date" != "true" ] && [ "$up_to_date" != "false" ]; }; then
+                fallback_reason="官方接口返回异常，无法解析up_to_date"
+            fi
+        fi
     fi
 
-    # 显示buildid对比信息
-    get_path_script_files "$cluster_name"
-    local current_buildid
-    current_buildid=$(cat "$script_files_path"/"cluster_game_buildid.txt")
-    echo -e "\e[92m当前存档buildid: $current_buildid\e[0m"
-    echo -e "\e[92m最新在线buildid: $buildid\e[0m"
-
-    if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $current_buildid ]]; then
+    if [ -n "$fallback_reason" ]; then
+        echo -e "\e[33m${DST_now}:${fallback_reason}，执行steamcmd更新作为fallback...\e[0m"
+        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
+    elif [ "$up_to_date" == "true" ]; then
+        echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
+    else
         echo " "
         echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
         echo " "
-        # 先检查游戏本体是不是最新的，如果是的话，那就直接重启存档就可以了,不然的话就先更新游戏本体
-        if [[ $(sed 's/[^0-9]//g' "$buildid_version_path") -gt $(grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g') ]]; then
-            # 更新游戏本体
-            if [ "$buildid_version_flag" == "public" ]; then
-                echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
-                update_game DEFAULT
-            else
-                echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
-                update_game BETA
-            fi
-        fi
-        auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
-        c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
-        if [ "$auto_update_anyway" == "true" ]; then
-            # 重启该存档，但不关闭当前进程
-            restart_server "$cluster_name" -AUTO
-        else
-            restart_server "$cluster_name" -AUTO -NOBODY
-        fi
-    else
-        echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
+        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
     fi
 }
 
