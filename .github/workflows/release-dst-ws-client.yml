@@ -1,0 +1,40 @@
+name: Release dst-ws-client
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: linux-amd64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+
+      - name: Build single-file program
+        env:
+          GOOS: linux
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p dist
+          go build -trimpath -ldflags="-s -w" -o dist/dst-ws-client-linux-amd64 ./dst-ws-client.go
+          chmod +x dist/dst-ws-client-linux-amd64
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dst-ws-client-linux-amd64
+          generate_release_notes: true
+          fail_on_unmatched_files: true
