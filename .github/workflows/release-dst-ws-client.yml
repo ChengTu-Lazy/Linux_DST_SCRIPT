@@ -35,7 +35,10 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/dst-ws-client-linux-amd64
+          files: |
+            dist/dst-ws-client-linux-amd64
+            DST_SCRIPT.sh
+            config.example.json
           body: |
             本版本主要新增 `dst-ws-client` 单文件 WebSocket 客户端，并修复 DST 服务端自动更新判断逻辑。
 
