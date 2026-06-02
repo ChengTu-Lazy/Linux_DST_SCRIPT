@@ -24,6 +24,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -75,8 +76,27 @@ type ClientMessage struct {
 	Args    map[string]interface{} `json:"args"`
 }
 
+type CapabilityMessage struct {
+	Type           string                      `json:"type"`
+	Version        int                         `json:"version"`
+	DefaultCluster string                      `json:"defaultCluster,omitempty"`
+	Clusters       []ClusterInfo               `json:"clusters,omitempty"`
+	Actions        map[string]ActionCapability `json:"actions"`
+	Aliases        map[string]string           `json:"aliases"`
+	ClusterAliases map[string]string           `json:"clusterAliases,omitempty"`
+}
+
+type ActionCapability struct {
+	Description string   `json:"description"`
+	Aliases     []string `json:"aliases,omitempty"`
+	Usage       string   `json:"usage,omitempty"`
+	TextArg     string   `json:"textArg,omitempty"`
+}
+
 type Action struct {
 	Description string
+	Usage       string
+	TextArg     string
 	BuildArgs   func(NormalizedInput) ([]string, error)
 }
 
@@ -104,12 +124,17 @@ var defaultAliases = map[string]string{
 	"restartServer": "restartServer",
 	"restartAuto":   "restartAuto",
 	"closeServer":   "closeServer",
+	"rollback":      "rollback",
 	"rollback1":     "rollback1",
 	"rollback2":     "rollback2",
 	"rollback3":     "rollback3",
 	"rollback4":     "rollback4",
 	"rollback5":     "rollback5",
 	"listClusters":  "listClusters",
+	"getModInfo":    "getModInfo",
+	"getWorldInfo":  "getWorldInfo",
+	"getChatLog":    "getChatLog",
+	"say":           "say",
 	"查进程":           "checkprocess",
 	"检查进程":          "checkprocess",
 	"玩家列表":          "getPlayerList",
@@ -122,6 +147,8 @@ var defaultAliases = map[string]string{
 	"关服":            "closeServer",
 	"关闭":            "closeServer",
 	"关闭服务器":         "closeServer",
+	"回档":            "rollback",
+	"回滚":            "rollback",
 	"回档1":           "rollback1",
 	"回档2":           "rollback2",
 	"回档3":           "rollback3",
@@ -139,6 +166,18 @@ var defaultAliases = map[string]string{
 	"1":             "restartAuto",
 	"2":             "closeServer",
 	"3":             "rollback1",
+	"模组信息":          "getModInfo",
+	"查看模组":          "getModInfo",
+	"mod信息":         "getModInfo",
+	"世界信息":          "getWorldInfo",
+	"查看世界":          "getWorldInfo",
+	"世界配置":          "getWorldInfo",
+	"聊天记录":          "getChatLog",
+	"玩家对话":          "getChatLog",
+	"对话记录":          "getChatLog",
+	"说话":            "say",
+	"公告":            "say",
+	"发消息":           "say",
 }
 
 var actions = map[string]Action{
@@ -149,9 +188,9 @@ var actions = map[string]Action{
 		},
 	},
 	"checkprocess": {
-		Description: "检查服务器进程，必要时按原脚本逻辑尝试拉起异常世界。",
+		Description: "只读检查服务器进程状态，不会自动拉起服务器。",
 		BuildArgs: func(input NormalizedInput) ([]string, error) {
-			return []string{"-checkprocess", input.Cluster}, nil
+			return []string{"__status", input.Cluster}, nil
 		},
 	},
 	"getPlayerList": {
@@ -190,6 +229,48 @@ var actions = map[string]Action{
 	"rollback3": rollbackAction(3),
 	"rollback4": rollbackAction(4),
 	"rollback5": rollbackAction(5),
+	"rollback": {
+		Description: "向 DST 控制台发送 c_rollback(n)，需要填写要回档的天数。",
+		Usage:       "天数",
+		TextArg:     "days",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			days, err := requiredPositiveInt(input.Args["days"], "回档天数")
+			if err != nil {
+				return nil, err
+			}
+			return []string{"__console_rollback", input.Cluster, strconv.Itoa(days)}, nil
+		},
+	},
+	"getModInfo": {
+		Description: "读取当前存档的 modoverrides.lua，并通过 Steam API 获取模组名称和版本号。",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			return []string{"__mod_info", input.Cluster}, nil
+		},
+	},
+	"getWorldInfo": {
+		Description: "通过 DST 控制台读取当前世界状态和实体数量，例如芦苇、蜘蛛巢、触手、海象巢等。",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			return []string{"__runtime_world_info", input.Cluster}, nil
+		},
+	},
+	"getChatLog": {
+		Description: "查看当前存档 Master/Caves 最近的玩家聊天记录。",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			return []string{"__chat_log", input.Cluster}, nil
+		},
+	},
+	"say": {
+		Description: "向 DST 控制台发送公告，例：公告 今晚 9 点开局。",
+		Usage:       "文本",
+		TextArg:     "text",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			text, err := requiredText(input.Args["text"], "公告内容")
+			if err != nil {
+				return nil, err
+			}
+			return []string{"__announce", input.Cluster, text}, nil
+		},
+	},
 }
 
 func rollbackAction(days int) Action {
@@ -773,6 +854,7 @@ func runClientMode() {
 			writeClientText(client, connectedMessage())
 			announced = true
 		}
+		writeClientText(client, capabilityMessage())
 		readClientLoop(client)
 		stopHeartbeat()
 		_ = client.Conn.Close()
@@ -863,27 +945,25 @@ func shouldIgnoreKoishiMessage(text string) bool {
 }
 
 func handleKoishiCommand(client *WSClient, text string) {
-	if !clientCommandMu.TryLock() {
-		writeClientText(client, "已有服务器命令正在执行，请稍后再试。")
-		return
-	}
-	defer clientCommandMu.Unlock()
-
 	request := ClientMessage{Command: text}
 	action, argv, err := buildCLIArgs(request)
 	if err != nil {
-		writeClientText(client, "命令不支持或参数错误："+err.Error())
+		writeClientText(client, err.Error())
 		return
 	}
 	if action == "listClusters" {
 		writeClientText(client, formatClusterList())
 		return
 	}
+	if !clientCommandMu.TryLock() {
+		writeClientText(client, "已有命令正在执行，请稍后再试。")
+		return
+	}
+	defer clientCommandMu.Unlock()
 
 	log.Printf("[client-run] %s %s", action, strings.Join(argv, " "))
-	writeClientText(client, fmt.Sprintf("开始执行 %s：%s", action, strings.Join(argv, " ")))
 
-	timeoutMs := config.CommandTimeoutMs
+	timeoutMs := commandTimeoutMs(action)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutMs)*time.Millisecond)
 	defer cancel()
 
@@ -891,25 +971,230 @@ func handleKoishiCommand(client *WSClient, text string) {
 	cmd := newScriptCommand(ctx, argv)
 	output, err := cmd.CombinedOutput()
 	timedOut := errors.Is(ctx.Err(), context.DeadlineExceeded)
+	if timedOut {
+		killCommandGroup(cmd)
+	}
 	code := exitCode(err)
 	duration := time.Since(startedAt).Round(time.Second)
 
-	body := cleanForChat(string(output), config.ClientOutputLimit)
-	if body == "" {
-		body = "(无输出)"
+	writeClientText(client, formatCommandResult(action, string(output), code, err, timedOut, duration))
+}
+
+func formatCommandResult(action string, output string, code int, err error, timedOut bool, duration time.Duration) string {
+	body := cleanForChat(output, config.ClientOutputLimit)
+	body = simplifyActionOutput(action, body)
+
+	if code == 0 && !timedOut {
+		if body != "" {
+			return body
+		}
+		return successMessage(action, duration)
 	}
-	status := fmt.Sprintf("执行完成 %s，退出码 %d，耗时 %s", action, code, duration)
+
+	status := fmt.Sprintf("%s 执行失败，退出码 %d", action, code)
 	if timedOut {
 		status += "，已超时"
 	}
 	if err != nil && code == -1 {
-		status += "，错误：" + err.Error()
+		status += "：" + err.Error()
 	}
-	writeClientText(client, status+"\n"+body)
+	if body == "" {
+		return status
+	}
+	return status + "\n" + body
+}
+
+func successMessage(action string, duration time.Duration) string {
+	switch action {
+	case "restartAuto", "restartServer":
+		return fmt.Sprintf("开服/重启命令已结束，用时 %s。", duration)
+	case "closeServer":
+		return fmt.Sprintf("关服命令已结束，用时 %s。", duration)
+	case "say":
+		return "公告已发送。"
+	default:
+		return "执行成功。"
+	}
+}
+
+func simplifyActionOutput(action string, body string) string {
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return ""
+	}
+	switch action {
+	case "restartAuto", "restartServer", "closeServer":
+		return summarizeLongServerOutput(action, body)
+	case "getPlayerList":
+		return summarizePlayerListOutput(body)
+	case "say":
+		return summarizeSayOutput(body)
+	default:
+		return body
+	}
+}
+
+func summarizeLongServerOutput(action string, body string) string {
+	lines := filterNoiseLines(strings.Split(body, "\n"))
+	if len(lines) == 0 {
+		return successMessage(action, 0)
+	}
+	title := "执行结果"
+	if action == "restartAuto" || action == "restartServer" {
+		title = "开服/重启结果"
+	} else if action == "closeServer" {
+		title = "关服结果"
+	}
+	statusLines := filterLinesContaining(lines, "状态确认")
+	if len(statusLines) > 0 {
+		return title + "\n" + strings.Join(statusLines, "\n")
+	}
+	keyLines := pickServerResultLines(lines)
+	if len(keyLines) > 0 {
+		lines = keyLines
+	} else {
+		lines = tailLines(lines, 8)
+	}
+	return title + "\n" + strings.Join(lines, "\n")
+}
+
+func filterLinesContaining(lines []string, value string) []string {
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.Contains(line, value) {
+			result = append(result, line)
+		}
+	}
+	return result
+}
+
+func summarizeSayOutput(body string) string {
+	prefix := "sent announce to "
+	if strings.HasPrefix(body, prefix) {
+		if index := strings.LastIndex(body, ": "); index >= 0 && index+2 < len(body) {
+			return "公告已发送：" + strings.TrimSpace(body[index+2:])
+		}
+		return "公告已发送。"
+	}
+	return body
+}
+
+func summarizePlayerListOutput(body string) string {
+	lines := filterNoiseLines(strings.Split(body, "\n"))
+	if len(lines) == 0 {
+		return "没有读取到玩家列表。"
+	}
+	return strings.Join(tailLines(lines, 20), "\n")
+}
+
+func pickServerResultLines(lines []string) []string {
+	keywords := []string{
+		"启动成功",
+		"启动完成",
+		"开启成功",
+		"服务器运行正常",
+		"状态确认",
+		"运行中",
+		"关闭成功",
+		"已关闭",
+		"关服完成",
+		"重启完成",
+		"失败",
+		"错误",
+		"异常",
+		"超时",
+		"running",
+		"started",
+		"stopped",
+		"failed",
+		"error",
+	}
+	result := make([]string, 0, 8)
+	for _, line := range lines {
+		lower := strings.ToLower(line)
+		for _, keyword := range keywords {
+			if strings.Contains(lower, strings.ToLower(keyword)) {
+				result = append(result, line)
+				break
+			}
+		}
+	}
+	if len(result) > 8 {
+		return tailLines(result, 8)
+	}
+	return result
+}
+
+func filterNoiseLines(lines []string) []string {
+	result := make([]string, 0, len(lines))
+	seen := map[string]bool{}
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || isNoiseLine(line) {
+			continue
+		}
+		if seen[line] {
+			continue
+		}
+		seen[line] = true
+		result = append(result, line)
+	}
+	return result
+}
+
+func isNoiseLine(line string) bool {
+	trimmed := strings.Trim(line, "= #-\t")
+	if trimmed == "" {
+		return true
+	}
+	noiseParts := []string{
+		"There is a screen on:",
+		"No screen session found",
+		"Sockets in /run/screen",
+		"Socket in /run/screen",
+		"screen size is bogus",
+		"正在处理.",
+		"正在处理..",
+		"正在处理...",
+		"等待.",
+		"等待..",
+		"等待...",
+		"启动.",
+		"启动..",
+		"启动...",
+	}
+	for _, part := range noiseParts {
+		if strings.Contains(line, part) {
+			return true
+		}
+	}
+	return false
+}
+
+func tailLines(lines []string, limit int) []string {
+	if limit <= 0 || len(lines) <= limit {
+		return lines
+	}
+	return lines[len(lines)-limit:]
+}
+
+func commandTimeoutMs(action string) int {
+	switch action {
+	case "checkprocess", "getWorldInfo", "getChatLog", "say":
+		return 15000
+	case "getModInfo":
+		return 30000
+	case "getPlayerList":
+		return 30000
+	case "restartAuto", "restartServer":
+		return 90000
+	default:
+		return config.CommandTimeoutMs
+	}
 }
 
 func buildCLIArgs(message ClientMessage) (string, []string, error) {
-	requestedAction, cluster := parseRequestedAction(message)
+	requestedAction, cluster, parsedArgs := parseRequestedAction(message)
 	if requestedAction == "" {
 		return "", nil, errors.New("缺少 action 或 command")
 	}
@@ -947,52 +1232,64 @@ func buildCLIArgs(message ClientMessage) (string, []string, error) {
 	if args == nil {
 		args = map[string]interface{}{}
 	}
+	for key, value := range parsedArgs {
+		if _, exists := args[key]; !exists {
+			args[key] = value
+		}
+	}
 
 	argv, err := definition.BuildArgs(NormalizedInput{Action: action, Cluster: cluster, Args: args})
 	return action, argv, err
 }
 
-func parseRequestedAction(message ClientMessage) (string, string) {
+func parseRequestedAction(message ClientMessage) (string, string, map[string]interface{}) {
 	cluster := strings.TrimSpace(message.Cluster)
 	if action := strings.TrimSpace(message.Action); action != "" {
-		return action, cluster
+		return action, cluster, map[string]interface{}{}
 	}
 
 	command := strings.TrimSpace(message.Command)
 	if command == "" {
-		return "", cluster
+		return "", cluster, map[string]interface{}{}
 	}
 
-	action, commandCluster := parsePlainCommand(command)
+	action, commandCluster, args := parsePlainCommand(command)
 	if cluster == "" {
 		cluster = commandCluster
 	}
-	return action, cluster
+	return action, cluster, args
 }
 
-func parsePlainCommand(command string) (string, string) {
+func parsePlainCommand(command string) (string, string, map[string]interface{}) {
 	if isKnownAction(command) {
-		return command, ""
+		return command, "", map[string]interface{}{}
 	}
 
 	parts := strings.Fields(command)
 	if len(parts) <= 1 {
-		return command, ""
+		return command, "", map[string]interface{}{}
+	}
+
+	if actionAcceptsText(parts[0]) {
+		return parts[0], "", map[string]interface{}{actionTextArg(parts[0]): strings.Join(parts[1:], " ")}
+	}
+	if len(parts) > 2 && actionAcceptsText(parts[1]) {
+		return parts[1], parts[0], map[string]interface{}{actionTextArg(parts[1]): strings.Join(parts[2:], " ")}
 	}
 
 	first := parts[0]
 	tailAction := strings.Join(parts[1:], " ")
 	if isKnownAction(tailAction) {
-		return tailAction, first
+		return tailAction, first, map[string]interface{}{}
 	}
 
 	last := parts[len(parts)-1]
 	headAction := strings.Join(parts[:len(parts)-1], " ")
 	if isKnownAction(headAction) {
-		return headAction, last
+		return headAction, last, map[string]interface{}{}
 	}
 
-	return command, ""
+	return command, "", map[string]interface{}{}
 }
 
 func isKnownAction(value string) bool {
@@ -1005,6 +1302,36 @@ func isKnownAction(value string) bool {
 	}
 	_, ok := actions[value]
 	return ok
+}
+
+func canonicalAction(value string) (string, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", false
+	}
+	if mapped, ok := config.Aliases[value]; ok {
+		value = strings.TrimSpace(mapped)
+	}
+	if _, ok := actions[value]; ok {
+		return value, true
+	}
+	return "", false
+}
+
+func actionAcceptsText(value string) bool {
+	action, ok := canonicalAction(value)
+	return ok && actions[action].TextArg != ""
+}
+
+func actionTextArg(value string) string {
+	action, ok := canonicalAction(value)
+	if !ok {
+		return "text"
+	}
+	if arg := strings.TrimSpace(actions[action].TextArg); arg != "" {
+		return arg
+	}
+	return "text"
 }
 
 func resolveDefaultCluster() (string, error) {
@@ -1124,6 +1451,52 @@ func connectedMessage() string {
 		return "DST 脚本客户端已连接：未发现存档"
 	}
 	return "DST 脚本客户端已连接：" + strings.Join(clusterNames(clusters), ", ")
+}
+
+func capabilityMessage() string {
+	aliasesByAction := map[string][]string{}
+	for alias, action := range config.Aliases {
+		alias = strings.TrimSpace(alias)
+		action = strings.TrimSpace(action)
+		if alias == "" || action == "" {
+			continue
+		}
+		aliasesByAction[action] = append(aliasesByAction[action], alias)
+	}
+
+	actionNames := make([]string, 0, len(actions))
+	for action := range actions {
+		actionNames = append(actionNames, action)
+	}
+	sort.Strings(actionNames)
+
+	capabilities := map[string]ActionCapability{}
+	for _, action := range actionNames {
+		aliases := aliasesByAction[action]
+		sort.Strings(aliases)
+		capabilities[action] = ActionCapability{
+			Description: actions[action].Description,
+			Aliases:     aliases,
+			Usage:       actions[action].Usage,
+			TextArg:     actions[action].TextArg,
+		}
+	}
+
+	message := CapabilityMessage{
+		Type:           "dst-ws-client.capabilities",
+		Version:        1,
+		DefaultCluster: config.DefaultCluster,
+		Clusters:       clusterCandidates(),
+		Actions:        capabilities,
+		Aliases:        config.Aliases,
+		ClusterAliases: config.ClusterAliases,
+	}
+	payload, err := json.Marshal(message)
+	if err != nil {
+		log.Printf("[client] marshal capabilities failed: %v", err)
+		return ""
+	}
+	return string(payload)
 }
 
 func formatClusterList() string {
@@ -1365,10 +1738,38 @@ func sortClusters(byName map[string]*ClusterInfo) []ClusterInfo {
 
 func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 	var cmd *exec.Cmd
-	if len(argv) == 2 && argv[0] == "__source_close_server" {
+	if len(argv) == 2 && argv[0] == "__status" {
+		cluster := argv[1]
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; master='未配置'; caves='未配置'; if [ -d \"$DST_SAVE_PATH/%s/Master\" ]; then if screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; else master='未运行'; fi; fi; if [ -d \"$DST_SAVE_PATH/%s/Caves\" ]; then if screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; else caves='未运行'; fi; fi; printf '存档: %s\\n地上: %s\\n地下: %s\\n' %s \"$master\" \"$caves\"",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+			"%s",
+			"%s",
+			"%s",
+			shellQuote(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__source_close_server" {
 		cluster := argv[1]
 		script := fmt.Sprintf(
 			"set -- __dst_ws_service; source %s; init %s; close_server %s -close",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) >= 2 && len(argv) <= 3 && argv[0] == "-restart_server" {
+		cluster := argv[1]
+		restartArgs := shellQuote(config.ScriptPath) + " -restart_server " + shellQuote(cluster)
+		if len(argv) == 3 {
+			restartArgs += " " + shellQuote(argv[2])
+		}
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; timeout --kill-after=5s 75s %s; rc=$?; source %s >/dev/null; init %s >/dev/null; get_process_name %s; master='未运行'; caves='未运行'; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; fi; if [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; fi; printf '\\n状态确认：地上 %%s\\n状态确认：地下 %%s\\n' \"$master\" \"$caves\"; if [ \"$master\" = '运行中' ] || [ \"$caves\" = '运行中' ]; then exit 0; fi; exit \"$rc\"",
+			restartArgs,
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellQuote(cluster),
@@ -1378,11 +1779,176 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 		cluster := argv[1]
 		days := argv[2]
 		script := fmt.Sprintf(
-			"set -- __dst_ws_service; source %s; init %s; if ! screen -ls | grep --text -q \"\\<$process_name_main\\>\"; then echo \"服务器进程未运行: $process_name_main\"; exit 1; fi; screen -r \"$process_name_main\" -p 0 -X stuff \"c_rollback(%s)$(printf \\r)\"; echo \"已发送回档%s天命令到 $process_name_main\"",
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; get_process_name %s; target=''; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then target=\"$process_name_master\"; elif [ -n \"${process_name_main:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_main\\>\"; then target=\"$process_name_main\"; elif [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then target=\"$process_name_caves\"; fi; if [ -z \"$target\" ]; then echo \"服务器进程未运行，无法回档\"; exit 1; fi; screen -S \"$target\" -p 0 -X stuff \"c_rollback(%s)$(printf '\\r')\"; echo \"已发送回档%s天命令到 $target\"",
 			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
 			shellQuote(cluster),
 			days,
 			days,
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__mod_info" {
+		cluster := argv[1]
+		script := fmt.Sprintf(
+			`set -- __dst_ws_service
+source %s >/dev/null
+init %s >/dev/null
+base="$DST_SAVE_PATH/%s"
+echo "模组信息 - %s"
+declare -A worlds
+found_file=0
+for world in Master Caves; do
+	file="$base/$world/modoverrides.lua"
+	[ -f "$file" ] || continue
+	found_file=1
+	while IFS= read -r mod; do
+		id="${mod#workshop-}"
+		[ -n "$id" ] || continue
+		if [ -n "${worlds[$id]:-}" ]; then
+			case ",${worlds[$id]}," in
+				*",$world,"*) ;;
+				*) worlds[$id]="${worlds[$id]},$world" ;;
+			esac
+		else
+			worlds[$id]="$world"
+		fi
+	done < <(grep -aoE 'workshop-[0-9]+' "$file" | sort -u)
+done
+if [ "$found_file" -ne 1 ]; then
+	echo "未找到 modoverrides.lua"
+	exit 1
+fi
+if [ "${#worlds[@]}" -eq 0 ]; then
+	echo "未配置 Workshop 模组"
+	exit 0
+fi
+mapfile -t ids < <(for id in "${!worlds[@]}"; do echo "$id"; done | sort -n)
+echo "已配置 ${#ids[@]} 个 Workshop 模组"
+tmp_dir=$(mktemp -d)
+trap 'rm -rf "$tmp_dir"' EXIT
+chunk_size=5
+parallel_limit=4
+running=0
+chunk_index=0
+for ((offset=0; offset<${#ids[@]}; offset+=chunk_size)); do
+	(
+		data="itemcount=0"
+		count=0
+		for ((i=offset; i<${#ids[@]} && i<offset+chunk_size; i++)); do
+			data="itemcount=$((count + 1))${data#itemcount=$count}"
+			data="$data&publishedfileids[$count]=${ids[$i]}"
+			count=$((count + 1))
+		done
+		for attempt in 1 2 3; do
+			response=$(curl -s --connect-timeout 8 --max-time 15 -X POST 'http://api.steampowered.com/ISteamRemoteStorage/GetPublishedFileDetails/v1/' -H 'Content-Type: application/x-www-form-urlencoded' --data "$data")
+			if echo "$response" | jq -e '.response.publishedfiledetails' >/dev/null 2>&1; then
+				echo "$response" | jq -r '.response.publishedfiledetails[] | [.publishedfileid, (.title // ""), (([.tags[]? | .tag | select(startswith("version:"))][0] // "") | sub("^version:"; "")), (.result // 0 | tostring)] | @tsv' > "$tmp_dir/chunk-$offset.tsv"
+				exit 0
+			fi
+			sleep 1
+		done
+		exit 0
+	) &
+	running=$((running + 1))
+	chunk_index=$((chunk_index + 1))
+	if [ "$running" -ge "$parallel_limit" ]; then
+		wait -n || true
+		running=$((running - 1))
+	fi
+done
+wait || true
+cat "$tmp_dir"/chunk-*.tsv > "$tmp_dir/all.tsv" 2>/dev/null || true
+for id in "${ids[@]}"; do
+	line=$(grep -m 1 "^$id"$'\t' "$tmp_dir/all.tsv" 2>/dev/null || true)
+	if [ -n "$line" ]; then
+		IFS=$'\t' read -r id title version result <<< "$line"
+	else
+		title=""
+		version=""
+		result="0"
+	fi
+	[ -n "$id" ] || continue
+	if [ "$result" != "1" ]; then
+		echo "- workshop-$id"
+		echo "  ID：workshop-$id | 版本：未知 | 世界：${worlds[$id]}"
+		continue
+	fi
+	[ -n "$title" ] || title="未命名模组"
+	[ -n "$version" ] || version="未标注"
+	echo "- $title"
+	echo "  ID：workshop-$id | 版本：$version | 世界：${worlds[$id]}"
+done`,
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__world_info" {
+		cluster := argv[1]
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; echo \"World info: %s\"; if [ -f \"$base/cluster.ini\" ]; then echo; echo \"[cluster.ini]\"; sed -n '1,120p' \"$base/cluster.ini\"; fi; found=0; for world in Master Caves; do file=\"$base/$world/leveldataoverride.lua\"; [ -f \"$file\" ] || continue; found=1; echo; echo \"[$world leveldataoverride.lua]\"; sed -n '1,180p' \"$file\"; done; if [ \"$found\" -ne 1 ]; then echo \"no leveldataoverride.lua found\"; exit 1; fi",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__runtime_world_info" {
+		cluster := argv[1]
+		script := fmt.Sprintf(
+			`set -- __dst_ws_service
+source %s >/dev/null
+init %s >/dev/null
+get_process_name %s
+if ! screen -ls | grep --text -Eq "\<(${process_name_master:-__none__}|${process_name_caves:-__none__}|${process_name_main:-__none__})\>"; then
+	echo "服务器进程未运行，无法获取运行时世界信息"
+	exit 1
+fi
+getworldstate
+getmonster
+n(){ if [ -n "$1" ]; then printf '%%s' "$1"; else printf '0'; fi; }
+echo "世界信息 - %s"
+echo "状态：第$(n "$presentcycles")天，$presentseason 第$(n "$presentday")天，$presentphase / $presentmoonphase / $presentrain / $presentsnow / $(n "$presenttemperature")°C"
+if screen -ls | grep --text -q "\<$process_name_master\>"; then
+	echo ""
+	echo "地上："
+	echo "海象巢 $(n "$walrus_camp_master") | 高脚鸟巢 $(n "$tallbirdnest_master") | 猎犬丘 $(n "$houndmound_master") | 墓地 $(n "$gravestone_master")"
+	echo "触手怪 $(n "$tentacle_master") | 蜘蛛巢 $(n "$spiderden_master") | 芦苇 $(n "$reeds_master") 株"
+fi
+if screen -ls | grep --text -q "\<$process_name_caves\>"; then
+	echo ""
+	echo "地下："
+	echo "触手怪 $(n "$tentacle_caves") | 蜘蛛巢 $(n "$spiderden_caves") | 芦苇 $(n "$reeds_caves") 株"
+	echo "损坏主教 $(n "$bishop_nightmare") | 损坏战车 $(n "$rook_nightmare") | 损坏骑士 $(n "$knight_nightmare")"
+fi`,
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__chat_log" {
+		cluster := argv[1]
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; echo \"Recent chat log: %s\"; found=0; for world in Master Caves; do file=\"$base/$world/server_chat_log.txt\"; [ -f \"$file\" ] || continue; found=1; echo; echo \"[$world]\"; tail -n 80 \"$file\"; done; if [ \"$found\" -ne 1 ]; then echo \"no server_chat_log.txt found\"; exit 1; fi",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 3 && argv[0] == "__announce" {
+		cluster := argv[1]
+		text := argv[2]
+		consoleCommand := "c_announce(" + luaLongString(text) + ")"
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; get_process_name %s; target=''; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then target=\"$process_name_master\"; elif [ -n \"${process_name_main:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_main\\>\"; then target=\"$process_name_main\"; elif [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then target=\"$process_name_caves\"; fi; if [ -z \"$target\" ]; then echo \"server is not running, cannot announce\"; exit 1; fi; command=%s; screen -S \"$target\" -p 0 -X stuff \"$command$(printf '\\r')\"; echo \"sent announce to $target: %s\"",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+			shellQuote(consoleCommand),
+			shellEscapeForDoubleQuoted(text),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else {
@@ -1390,7 +1956,39 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 	}
 	cmd.Dir = config.Cwd
 	cmd.Env = os.Environ()
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	return cmd
+}
+
+func shellEscapeForDoubleQuoted(value string) string {
+	value = strings.ReplaceAll(value, `\`, `\\`)
+	value = strings.ReplaceAll(value, `"`, `\"`)
+	value = strings.ReplaceAll(value, `$`, `\$`)
+	value = strings.ReplaceAll(value, "`", "\\`")
+	return value
+}
+
+func luaLongString(value string) string {
+	level := 0
+	for {
+		equals := strings.Repeat("=", level)
+		close := "]" + equals + "]"
+		if !strings.Contains(value, close) {
+			return "[" + equals + "[" + value + close
+		}
+		level++
+	}
+}
+
+func killCommandGroup(cmd *exec.Cmd) {
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	pgid, err := syscall.Getpgid(cmd.Process.Pid)
+	if err != nil {
+		return
+	}
+	_ = syscall.Kill(-pgid, syscall.SIGKILL)
 }
 
 func shellQuote(value string) string {
@@ -1623,6 +2221,32 @@ func optionalChoice(value interface{}, field string, choices []string) (string, 
 		}
 	}
 	return "", fmt.Errorf("%s 只能是: %s", field, strings.Join(nonEmpty(choices), ", "))
+}
+
+func requiredText(value interface{}, field string) (string, error) {
+	if value == nil {
+		return "", fmt.Errorf("%s 不能为空", field)
+	}
+	text := strings.TrimSpace(fmt.Sprint(value))
+	if text == "" || text == "<nil>" {
+		return "", fmt.Errorf("%s 不能为空", field)
+	}
+	if strings.Contains(text, "\x00") || strings.Contains(text, "\r") || strings.Contains(text, "\n") {
+		return "", fmt.Errorf("%s 不能包含换行或 NUL 字符", field)
+	}
+	return text, nil
+}
+
+func requiredPositiveInt(value interface{}, field string) (int, error) {
+	text, err := requiredText(value, field)
+	if err != nil {
+		return 0, fmt.Errorf("请输入要%s，例如：回档 3", field)
+	}
+	days, err := strconv.Atoi(text)
+	if err != nil || days <= 0 {
+		return 0, fmt.Errorf("%s必须是大于 0 的整数，例如：回档 3", field)
+	}
+	return days, nil
 }
 
 func exitCode(err error) int {

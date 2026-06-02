@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.16"
+script_version="1.8.17"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
@@ -547,7 +547,7 @@ start_server_check() {
 		check_flag=1
 		sleep 1
 		get_process_name "$cluster_name"
-		screen -r "$process_name_main" -p 0 -X stuff " modVersionInfo = {}  $(printf \\r)"
+		screen -S "$process_name_main" -p 0 -X stuff " modVersionInfo = {}  $(printf \\r)"
 		return 1
 	fi
 }
@@ -1053,17 +1053,17 @@ console() {
 			2)
 				echo "请输入你要回档的天数(1~5):"
 				read -r rollbackday
-				screen -r "$process_name_main" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
+				screen -S "$process_name_main" -p 0 -X stuff "c_rollback($rollbackday)$(printf \\r)"
 				echo "已回档$rollbackday 天！"
 				;;
 			3)
 				echo "请输入你要发布的公告:"
 				read -r str
-				screen -r "$process_name_main" -p 0 -X stuff "c_announce(\"$str\")$(printf \\r)"
+				screen -S "$process_name_main" -p 0 -X stuff "c_announce(\"$str\")$(printf \\r)"
 				echo "已发布通知！"
 				;;
 			4)
-				screen -r "$process_name_main" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
+				screen -S "$process_name_main" -p 0 -X stuff "for k,v in pairs(AllPlayers) do v:PushEvent('respawnfromghost') end$(printf \\r)"
 				echo "已复活全体玩家！"
 				;;
 			5)
@@ -1334,38 +1334,68 @@ checkmodupdate() {
     
     local timestamp=$(date +%s%3N)
     
-    screen -r "$process_name_main" -p 0 -X stuff "for k,v in pairs(KnownModIndex:GetModsToLoad()) do local modinfo = KnownModIndex:GetModInfo(v) print(string.format(\"modinfo $timestamp %s %s\", v, modinfo.version)) end$(printf \\r)"
+    screen -S "$process_name_main" -p 0 -X stuff "for k,v in pairs(KnownModIndex:GetModsToLoad()) do local modinfo = KnownModIndex:GetModInfo(v) print(string.format(\"modinfo $timestamp %s %s\", v, modinfo.version)) end$(printf \\r)"
     sleep 1
     
     get_path_server_log "$cluster_name"
     
     local has_mods_update=false
     declare -A updated_mods
+    declare -A current_mod_versions
 
     while read -r line; do
         if [[ $line =~ modinfo[[:space:]]$timestamp[[:space:]]workshop-([0-9]+)[[:space:]](.+)$ ]]; then
             local mod_id="${BASH_REMATCH[1]}"
             local current_version="${BASH_REMATCH[2]}"
-            
-            get_mod_info "$mod_id"
-            local online_version="${mod_info_post[1]}"
-            local mod_name="${mod_info_post[0]}"
-            
-            # 转换为小写进行比较
-            current_version_lower=$(echo "$current_version" | tr '[:upper:]' '[:lower:]')
-            online_version_lower=$(echo "$online_version" | tr '[:upper:]' '[:lower:]')
-
-            if [ -n "$online_version_lower" ] && [ "$online_version_lower" != "null" ] && [ "$current_version_lower" != "$online_version_lower" ]; then
-                log_with_timestamp "\e[33mMod [$mod_name] 有更新:"
-                log_with_timestamp "当前版本: $current_version"
-                log_with_timestamp "最新版本: $online_version\e[0m"
-                has_mods_update=true
-				updated_mods["$mod_id"]="$mod_name"
-            else
-                echo -e "\e[92mMod [$mod_name] [$mod_id] 已是最新版本 ($current_version)\e[0m"
-            fi
+            current_mod_versions["$mod_id"]="$current_version"
         fi
     done < <(grep --text "modinfo $timestamp" "$server_log_path_main")
+
+    if [ "${#current_mod_versions[@]}" -eq 0 ]; then
+        echo -e "\e[92m${DST_now}: 当前服务器没有启用 Workshop mod\e[0m"
+        return 0
+    fi
+
+    local mod_info_tmp
+    mod_info_tmp=$(mktemp -d)
+    local parallel_limit=8
+    local running=0
+    for mod_id in "${!current_mod_versions[@]}"; do
+        (
+            get_mod_info "$mod_id"
+            printf '%s\t%s\t%s\n' "$mod_id" "${mod_info_post[0]}" "${mod_info_post[1]}" > "$mod_info_tmp/$mod_id.tsv"
+        ) &
+        running=$((running + 1))
+        if [ "$running" -ge "$parallel_limit" ]; then
+            wait -n || true
+            running=$((running - 1))
+        fi
+    done
+    wait || true
+
+    for mod_id in "${!current_mod_versions[@]}"; do
+        local current_version="${current_mod_versions[$mod_id]}"
+        local mod_name="null"
+        local online_version="null"
+        if [ -s "$mod_info_tmp/$mod_id.tsv" ]; then
+            IFS=$'\t' read -r _ mod_name online_version < "$mod_info_tmp/$mod_id.tsv"
+        fi
+
+        # 转换为小写进行比较
+        current_version_lower=$(echo "$current_version" | tr '[:upper:]' '[:lower:]')
+        online_version_lower=$(echo "$online_version" | tr '[:upper:]' '[:lower:]')
+
+        if [ -n "$online_version_lower" ] && [ "$online_version_lower" != "null" ] && [ "$current_version_lower" != "$online_version_lower" ]; then
+            log_with_timestamp "\e[33mMod [$mod_name] 有更新:"
+            log_with_timestamp "当前版本: $current_version"
+            log_with_timestamp "最新版本: $online_version\e[0m"
+            has_mods_update=true
+			updated_mods["$mod_id"]="$mod_name"
+        else
+            echo -e "\e[92mMod [$mod_name] [$mod_id] 已是最新版本 ($current_version)\e[0m"
+        fi
+    done
+    rm -rf "$mod_info_tmp"
     
     if [ "$has_mods_update" = true ]; then
         echo -e "\e[31m${DST_now}: 发现mod更新!\e[0m"
@@ -1577,7 +1607,7 @@ auto_update() {
 	get_daysInfo()
 	{
 		datatime=\$(date +%s%3N)
-		screen -r \"$process_name_main\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime\\\")\$(printf \\\r)\"
+		screen -S \"$process_name_main\" -p 0 -X stuff \"print(TheWorld.components.worldstate.data.cycles .. \\\" \$datatime\\\")\$(printf \\\r)\"
 		sleep 1
 		presentday=\$(grep --text \"$server_log_path_main\" -e \"\$datatime\" | cut -d \" \" -f2 | tail -n +2 )
 	}
@@ -1766,7 +1796,7 @@ get_playerList() {
 	get_path_server_log "$cluster_name"
 	if [[ $(screen -ls | grep --text -c "\<$process_name_main\>") -gt 0 ]]; then
 		allplayerslist=$(date +%s%3N)
-		screen -r "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
+		screen -S "$process_name_main" -p 0 -X stuff "for i, v in ipairs(TheNet:GetClientTable()) do  if (i~=1) then print(string.format(\"playerlist %s [%d] %s %s %s\", $allplayerslist, i-1 , v.userid, v.name, v.prefab )) end end $(printf \\r)"
 		sleep 1
 		get_path_server_log "$cluster_name"
 		list=$(grep --text "$server_log_path_main" -e "playerlist $allplayerslist" | cut -d ' ' -f 4-15)
@@ -1820,7 +1850,7 @@ serverinfo() {
 # 获取天数信息
 get_daysInfo() {
 	datatime=$(date +%s%3N)
-	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles ..  \" ""$datatime"" \")$(printf \\r)"
 	sleep 1
 	get_path_server_log "$cluster_name"
 	presentday=$(grep --text "$server_log_path_main" -e "$datatime" | cut -d " " -f2 | tail -n +2)
@@ -1829,20 +1859,20 @@ get_daysInfo() {
 # 获取怪物信息
 getmonster() {
 	if [[ $(screen -ls | grep --text -c "\<$process_name_master\>") -gt 0 ]]; then
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"rook\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"tallbirdnest\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"mound\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"houndmound\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"tentacle\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"reeds\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"pigtorch\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"gravestone\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
-		screen -r "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"rook\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"tallbirdnest\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"mound\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"houndmound\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"tentacle\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"reeds\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"pigtorch\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"gravestone\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
+		screen -S "$process_name_master" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
 		sleep 1
 		get_path_server_log "$cluster_name"
 		walrus_camp_master=$(grep --text "$server_log_path_master" -e "walrus_camps in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
@@ -1852,9 +1882,9 @@ getmonster() {
 		houndmound_master=$(grep --text "$server_log_path_master" -e "houndmounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		mound_master=$(grep --text "$server_log_path_master" -e "mounds in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		gravestone_master=$(grep --text "$server_log_path_master" -e "gravestones in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_1_master=$(grep --text "$server_log_path_master" -e "spiderdens in the world." | awk '{print $4}')
-		spiderden_2_master=$(grep --text "$server_log_path_master" -e "spiderden_2s in the world." | awk '{print $4}')
-		spiderden_3_master=$(grep --text "$server_log_path_master" -e "spiderden_3s in the world." | awk '{print $4}')
+		spiderden_1_master=$(grep --text "$server_log_path_master" -e "spiderdens in the world." | awk '{print $4}' | tail -n 1)
+		spiderden_2_master=$(grep --text "$server_log_path_master" -e "spiderden_2s in the world." | awk '{print $4}' | tail -n 1)
+		spiderden_3_master=$(grep --text "$server_log_path_master" -e "spiderden_3s in the world." | awk '{print $4}' | tail -n 1)
 
 		# 如果某个变量无法解析出数值，则将其视为零
 		if ! [[ "$spiderden_1_master" =~ ^[0-9]+$ ]]; then spiderden_1_master=0; fi
@@ -1866,30 +1896,30 @@ getmonster() {
 		echo
 	fi
 	if [[ $(screen -ls | grep --text -c "\<$process_name_caves\>") -gt 0 ]]; then
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"tallbirdnest\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"mound\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"houndmound\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"tentacle\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"reeds\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"pigtorch\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"gravestone\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop_nightmare\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook_nightmare\")$(printf \\r)"
-		screen -r "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight_nightmare\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"walrus_camp\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"tallbirdnest\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"mound\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"houndmound\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"tentacle\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"reeds\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"pigtorch\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"gravestone\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden_2\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"spiderden_3\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"bishop_nightmare\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"rook_nightmare\")$(printf \\r)"
+		screen -S "$process_name_caves" -p 0 -X stuff "c_countprefabs(\"knight_nightmare\")$(printf \\r)"
 		sleep 1
 		get_path_server_log "$cluster_name"
 		reeds_caves=$(grep --text "$server_log_path_caves" -e "reedss in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
 		tentacle_caves=$(grep --text "$server_log_path_caves" -e "tentacles in the world." | cut -d ':' -f4 | tail -n 1 | sed 's/[^0-9\]//g')
-		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | awk '{print $4}')
-		spiderden_2_caves=$(grep --text "$server_log_path_caves" -e "spiderden_2s in the world." | awk '{print $4}')
-		spiderden_3_caves=$(grep --text "$server_log_path_caves" -e "spiderden_3s in the world." | awk '{print $4}')
+		spiderden_1_caves=$(grep --text "$server_log_path_caves" -e "spiderdens in the world." | awk '{print $4}' | tail -n 1)
+		spiderden_2_caves=$(grep --text "$server_log_path_caves" -e "spiderden_2s in the world." | awk '{print $4}' | tail -n 1)
+		spiderden_3_caves=$(grep --text "$server_log_path_caves" -e "spiderden_3s in the world." | awk '{print $4}' | tail -n 1)
 
 		# 如果某个变量无法解析出数值，则将其视为零
 		if ! [[ "$spiderden_1_caves" =~ ^[0-9]+$ ]]; then spiderden_1_caves=0; fi
@@ -1915,13 +1945,13 @@ getworldstate() {
 	presentsnow=""
 	presenttemperature=""
 	datatime=$(date +%s%3N)
-	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
-	screen -r "$process_name_main" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.net.components.seasons:GetDebugString() .. \" $datatime print\")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.phase .. \" $datatime phase\")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(\"\" .. TheWorld.components.worldstate.data.moonphase .. \" $datatime moonphase\")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.temperature .. \" $datatime temperature\")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(TheWorld.components.worldstate.data.cycles .. \" $datatime cycles\")$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(\"$datatime:rain:\",TheWorld.components.worldstate.data.israining)$(printf \\r)"
+	screen -S "$process_name_main" -p 0 -X stuff "print(\"$datatime:snow:\",TheWorld.components.worldstate.data.issnowing)$(printf \\r)"
 	sleep 1
 	get_path_server_log "$cluster_name"
 	presentseason=$(grep --text "$server_log_path_main" -e "$datatime print" | cut -d ' ' -f2 | tail -n +2)
