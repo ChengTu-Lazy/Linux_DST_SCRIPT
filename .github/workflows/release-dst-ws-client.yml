@@ -40,32 +40,33 @@ jobs:
             DST_SCRIPT.sh
             config.example.json
           body: |
-            本版本主要新增 `dst-ws-client` 单文件 WebSocket 客户端，并修复 DST 服务端自动更新判断逻辑。
+            本版本主要完善 `dst-ws-client` 与 Koishi `dst-search` 插件的控房桥接能力，并优化 DST 脚本在 WSL2 部署场景下的控制台交互稳定性。
 
             ### 新增
 
-            - 新增 `dst-ws-client.go`
-              - 主动连接 Koishi `dst-search` 插件的 WebSocket 服务
-              - 支持 token 鉴权
-              - 支持调用 `DST_SCRIPT.sh` 的 CLI 功能
-              - 编译后为 Linux amd64 单文件程序，运行时不依赖 Node、npm、Go 或第三方库
-            - 新增 GitHub Actions Release 工作流
-              - 推送 tag 后自动构建 `dst-ws-client-linux-amd64`
-              - 自动上传到 GitHub Release
-            - 新增 `config.example.json`，提供 WebSocket 客户端配置示例
+            - `dst-ws-client` 自动向 Koishi 上报可用功能、别名、默认存档和运行中存档列表
+            - Koishi 控房支持动态指令映射，可直接使用 `模组信息`、`世界信息`、`聊天记录`、`say 文本`、`回档 天数` 等命令
+            - 新增运行时世界信息查询，显示天数、季节、天气、温度，以及芦苇、蜘蛛巢、触手、海象巢等实体数量
+            - 新增模组信息查询，从 `modoverrides.lua` 收集 Workshop ID，并通过 Steam API 获取模组名称和版本号
+            - 模组信息查询使用分批并发请求，并对 Steam API 结果增加重试，减少偶发未知版本
 
             ### 修复
 
-            - 重写 `DST_SCRIPT.sh` 的 `checkupdate()` 更新判断逻辑
-              - 不再依赖 `api.steamcmd.net` 的 buildid
-              - 改用 Steam 官方 `UpToDateCheck` 接口检查 `appid=322330`
-              - 基于 `version.txt` 判断真实游戏版本
-              - 只有更新前后版本号变化时才重启服务器
-              - 官方接口失败或返回异常时 fallback 到 `steamcmd app_update 343050 validate`
+            - 修复 `screen -r ... -X stuff` 在 screen 会话已 attached 时可能卡住的问题，自动控制台发送改用 `screen -S ... -X stuff`
+            - 修复 `say` 中文公告被错误转义导致 Lua 报变量未声明的问题
+            - 修复 `回档 1` 这类带参数命令在 Koishi 到 ws-client 链路中参数丢失的问题
+            - 修复开服/重启命令长时间占用控制通道的问题，启动后会返回地上/地下状态确认
+            - 修复世界信息多次查询后部分蜘蛛巢统计可能变为 0 的问题
+            - 修复模组信息输出中 `printf` 格式化报错和部分模组误显示获取失败的问题
+
+            ### 优化
+
+            - 成功命令不再输出“开始执行 / 执行完成 / 退出码 / 耗时”等包装信息，直接返回业务结果
+            - 开服、关服、重启等长输出命令会压缩为关键摘要
+            - `DST_SCRIPT.sh -checkmodupdate` 改为并发获取线上模组版本，再统一比较更新状态
 
             ### 文档
 
-            - README 增加 `dst-ws-client` 用法说明
-            - README 增加 Koishi `dst-search` 接入配置说明
-            - README 增加 Release 下载和本地编译说明
+            - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.17`
           fail_on_unmatched_files: true
