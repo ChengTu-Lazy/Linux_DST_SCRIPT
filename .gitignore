@@ -9,3 +9,4 @@ steamcmd-win/
 .steam-*
 .proxy-relay-*.ps1
 .run-steamcmd-update.sh
+.vscode/

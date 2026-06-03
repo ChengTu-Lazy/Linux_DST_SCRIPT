@@ -40,33 +40,35 @@ jobs:
             DST_SCRIPT.sh
             config.example.json
           body: |
-            本版本主要完善 `dst-ws-client` 与 Koishi `dst-search` 插件的控房桥接能力，并优化 DST 脚本在 WSL2 部署场景下的控制台交互稳定性。
+            本版本继续完善 `dst-ws-client` 与 Koishi `dst-search` 插件的控房桥接能力，重点优化 WSL2 部署后的聊天同步、存档显示、开服控制和世界信息输出。
 
             ### 新增
 
-            - `dst-ws-client` 自动向 Koishi 上报可用功能、别名、默认存档和运行中存档列表
-            - Koishi 控房支持动态指令映射，可直接使用 `模组信息`、`世界信息`、`聊天记录`、`say 文本`、`回档 天数` 等命令
-            - 新增运行时世界信息查询，显示天数、季节、天气、温度，以及芦苇、蜘蛛巢、触手、海象巢等实体数量
-            - 新增模组信息查询，从 `modoverrides.lua` 收集 Workshop ID，并通过 Steam API 获取模组名称和版本号
-            - 模组信息查询使用分批并发请求，并对 Steam API 结果增加重试，减少偶发未知版本
+            - 新增聊天桥接控制消息：Koishi 可通过 `开启对话 / 关闭对话` 控制 DST 聊天日志同步。
+            - 聊天桥接开启后，DST 玩家发言会按 `【存档名】【世界】【用户名】：内容` 推送回 Koishi 会话。
+            - Koishi 群聊文本会按 `【群名】【QQ昵称】（QQ号）：内容` 发送到 DST 公告。
+            - `存档列表`、`查进程`、`模组信息`、`世界信息`、`聊天记录` 等输出支持读取 `cluster.ini` 中的 `cluster_name`，同时保留目录名用于实际控制。
+            - `世界信息` 增加当前 DST 服务端版本、Steam 最新状态和本地 buildid 输出。
+            - 新增 `startServer` 动作，专门处理开服。
+
+            ### 调整
+
+            - `开服 / 启动 / 启动服务器 / 1` 映射到 `startServer`。
+            - `重启 / 重启服务器` 保持映射到 `restartAuto`，开服和重启语义正式分离。
+            - 开服前会检测 `AutoUpdate <cluster>` 守护进程，不存在则启动，已存在则不重复启动。
+            - 开服时如果地上或地下任意世界已运行，不再执行启动或重启流程，只返回“服务器已开启”状态。
+            - 聊天桥接开启期间暂停 ws-client 周期性刷新，避免长时间对话同步时 WebSocket 断开重连。
 
             ### 修复
 
-            - 修复 `screen -r ... -X stuff` 在 screen 会话已 attached 时可能卡住的问题，自动控制台发送改用 `screen -S ... -X stuff`
-            - 修复 `say` 中文公告被错误转义导致 Lua 报变量未声明的问题
-            - 修复 `回档 1` 这类带参数命令在 Koishi 到 ws-client 链路中参数丢失的问题
-            - 修复开服/重启命令长时间占用控制通道的问题，启动后会返回地上/地下状态确认
-            - 修复世界信息多次查询后部分蜘蛛巢统计可能变为 0 的问题
-            - 修复模组信息输出中 `printf` 格式化报错和部分模组误显示获取失败的问题
+            - 修复沙盒/群聊普通文本在开启对话后没有稳定同步到 DST 的问题。
+            - 修复聊天桥接显示存档名只用文件夹名的问题。
+            - 修复聊天记录同时读取地上和地下导致输出冗余的问题，现在只读取第一个可用世界。
+            - 修复 `say` 中文公告被错误转义导致 Lua 报变量未声明的问题。
+            - 修复回档命令参数传递和控制台发送稳定性问题。
 
-            ### 优化
+            ### 发布内容
 
-            - 成功命令不再输出“开始执行 / 执行完成 / 退出码 / 耗时”等包装信息，直接返回业务结果
-            - 开服、关服、重启等长输出命令会压缩为关键摘要
-            - `DST_SCRIPT.sh -checkmodupdate` 改为并发获取线上模组版本，再统一比较更新状态
-
-            ### 文档
-
-            - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.17`
+            - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.18`。
           fail_on_unmatched_files: true

@@ -33,6 +33,16 @@ const maxFramePayload = 8 * 1024 * 1024
 const defaultClientPingIntervalMs = 5000
 const defaultClientReadTimeoutMs = 15000
 const defaultClientForceReconnectMs = 30000
+
+var wsWriteMu sync.Mutex
+
+var chatBridge = struct {
+	sync.Mutex
+	Enabled bool
+	Cluster string
+	Stop    chan struct{}
+}{}
+
 const clientWriteTimeout = 10 * time.Second
 
 type Config struct {
@@ -76,6 +86,26 @@ type ClientMessage struct {
 	Args    map[string]interface{} `json:"args"`
 }
 
+type ChatBridgeControlMessage struct {
+	Type    string `json:"type"`
+	Enabled bool   `json:"enabled"`
+	Cluster string `json:"cluster,omitempty"`
+}
+
+type ChatBridgeSendMessage struct {
+	Type    string `json:"type"`
+	Cluster string `json:"cluster,omitempty"`
+	Text    string `json:"text"`
+}
+
+type ChatBridgeEventMessage struct {
+	Type    string `json:"type"`
+	Cluster string `json:"cluster"`
+	World   string `json:"world"`
+	User    string `json:"user"`
+	Text    string `json:"text"`
+}
+
 type CapabilityMessage struct {
 	Type           string                      `json:"type"`
 	Version        int                         `json:"version"`
@@ -107,9 +137,10 @@ type NormalizedInput struct {
 }
 
 type ClusterInfo struct {
-	Name    string
-	Worlds  []string
-	Running bool
+	Name        string
+	DisplayName string `json:"displayName,omitempty"`
+	Worlds      []string
+	Running     bool
 }
 
 type WSClient struct {
@@ -121,6 +152,7 @@ type WSClient struct {
 var defaultAliases = map[string]string{
 	"checkprocess":  "checkprocess",
 	"getPlayerList": "getPlayerList",
+	"startServer":   "startServer",
 	"restartServer": "restartServer",
 	"restartAuto":   "restartAuto",
 	"closeServer":   "closeServer",
@@ -139,9 +171,9 @@ var defaultAliases = map[string]string{
 	"检查进程":          "checkprocess",
 	"玩家列表":          "getPlayerList",
 	"查看玩家":          "getPlayerList",
-	"开服":            "restartAuto",
-	"启动":            "restartAuto",
-	"启动服务器":         "restartAuto",
+	"开服":            "startServer",
+	"启动":            "startServer",
+	"启动服务器":         "startServer",
 	"重启":            "restartAuto",
 	"重启服务器":         "restartAuto",
 	"关服":            "closeServer",
@@ -163,7 +195,7 @@ var defaultAliases = map[string]string{
 	"存档":            "listClusters",
 	"服务器列表":         "listClusters",
 	"列表":            "listClusters",
-	"1":             "restartAuto",
+	"1":             "startServer",
 	"2":             "closeServer",
 	"3":             "rollback1",
 	"模组信息":          "getModInfo",
@@ -197,6 +229,12 @@ var actions = map[string]Action{
 		Description: "获取并备份玩家列表。",
 		BuildArgs: func(input NormalizedInput) ([]string, error) {
 			return []string{"-get_playerList", input.Cluster}, nil
+		},
+	},
+	"startServer": {
+		Description: "启动服务器；如果地上或地下已运行，则不做操作并提示已开启。",
+		BuildArgs: func(input NormalizedInput) ([]string, error) {
+			return []string{"__start_server", input.Cluster}, nil
 		},
 	},
 	"restartServer": {
@@ -877,13 +915,20 @@ func readClientLoop(client *WSClient) {
 			if shouldIgnoreKoishiMessage(text) {
 				continue
 			}
+			if handleKoishiControlMessage(client, text) {
+				continue
+			}
 			go handleKoishiCommand(client, text)
 		case 0x8:
 			log.Printf("[client] server closed websocket: %s", describeClosePayload(payload))
+			wsWriteMu.Lock()
 			_ = writeClientFrame(client, 0x8, payload)
+			wsWriteMu.Unlock()
 			return
 		case 0x9:
+			wsWriteMu.Lock()
 			_ = writeClientFrame(client, 0xA, payload)
+			wsWriteMu.Unlock()
 		case 0xA:
 			continue
 		}
@@ -903,12 +948,22 @@ func startClientHeartbeat(client *WSClient) func() {
 			case <-done:
 				return
 			case <-ticker.C:
+				wsWriteMu.Lock()
 				if err := writeClientFrame(client, 0x9, []byte("ping")); err != nil {
+					wsWriteMu.Unlock()
 					log.Printf("[client] heartbeat failed: %v", err)
 					_ = client.Conn.Close()
 					return
 				}
+				wsWriteMu.Unlock()
 			case <-refreshTicker.C:
+				chatBridge.Lock()
+				bridgeEnabled := chatBridge.Enabled
+				chatBridge.Unlock()
+				if bridgeEnabled {
+					log.Printf("[client] refresh skipped: chat bridge enabled")
+					continue
+				}
 				if clientCommandMu.TryLock() {
 					clientCommandMu.Unlock()
 					log.Printf("[client] refreshing websocket connection")
@@ -942,6 +997,65 @@ func shouldIgnoreKoishiMessage(text string) bool {
 	return text == "" ||
 		strings.HasPrefix(text, "欢迎连接到DST服务器") ||
 		strings.HasPrefix(text, "服务端已收到:")
+}
+
+func handleKoishiControlMessage(client *WSClient, text string) bool {
+	if !strings.HasPrefix(text, "{") {
+		return false
+	}
+
+	var probe struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal([]byte(text), &probe); err != nil {
+		return false
+	}
+	switch probe.Type {
+	case "dst-search.chat-control":
+		var message ChatBridgeControlMessage
+		if err := json.Unmarshal([]byte(text), &message); err != nil {
+			log.Printf("[chat-bridge] invalid control message: %v", err)
+			return true
+		}
+		cluster := strings.TrimSpace(message.Cluster)
+		if cluster == "" {
+			resolved, err := resolveDefaultCluster()
+			if err != nil {
+				log.Printf("[chat-bridge] resolve default cluster failed: %v", err)
+				return true
+			}
+			cluster = resolved
+		}
+		if message.Enabled {
+			startChatBridge(client, cluster)
+		} else {
+			stopChatBridge()
+		}
+		return true
+	case "dst-search.chat-send":
+		var message ChatBridgeSendMessage
+		if err := json.Unmarshal([]byte(text), &message); err != nil {
+			log.Printf("[chat-bridge] invalid send message: %v", err)
+			return true
+		}
+		cluster := strings.TrimSpace(message.Cluster)
+		if cluster == "" {
+			resolved, err := resolveDefaultCluster()
+			if err != nil {
+				log.Printf("[chat-bridge] resolve default cluster failed: %v", err)
+				return true
+			}
+			cluster = resolved
+		}
+		go func() {
+			if err := sendDSTAnnouncement(cluster, message.Text); err != nil {
+				log.Printf("[chat-bridge] send to DST failed: %v", err)
+			}
+		}()
+		return true
+	default:
+		return false
+	}
 }
 
 func handleKoishiCommand(client *WSClient, text string) {
@@ -1006,7 +1120,7 @@ func formatCommandResult(action string, output string, code int, err error, time
 
 func successMessage(action string, duration time.Duration) string {
 	switch action {
-	case "restartAuto", "restartServer":
+	case "startServer", "restartAuto", "restartServer":
 		return fmt.Sprintf("开服/重启命令已结束，用时 %s。", duration)
 	case "closeServer":
 		return fmt.Sprintf("关服命令已结束，用时 %s。", duration)
@@ -1023,7 +1137,7 @@ func simplifyActionOutput(action string, body string) string {
 		return ""
 	}
 	switch action {
-	case "restartAuto", "restartServer", "closeServer":
+	case "startServer", "restartAuto", "restartServer", "closeServer":
 		return summarizeLongServerOutput(action, body)
 	case "getPlayerList":
 		return summarizePlayerListOutput(body)
@@ -1040,7 +1154,7 @@ func summarizeLongServerOutput(action string, body string) string {
 		return successMessage(action, 0)
 	}
 	title := "执行结果"
-	if action == "restartAuto" || action == "restartServer" {
+	if action == "startServer" || action == "restartAuto" || action == "restartServer" {
 		title = "开服/重启结果"
 	} else if action == "closeServer" {
 		title = "关服结果"
@@ -1092,6 +1206,7 @@ func pickServerResultLines(lines []string) []string {
 		"启动成功",
 		"启动完成",
 		"开启成功",
+		"已开启",
 		"服务器运行正常",
 		"状态确认",
 		"运行中",
@@ -1186,10 +1301,258 @@ func commandTimeoutMs(action string) int {
 		return 30000
 	case "getPlayerList":
 		return 30000
-	case "restartAuto", "restartServer":
+	case "startServer", "restartAuto", "restartServer":
 		return 90000
 	default:
 		return config.CommandTimeoutMs
+	}
+}
+
+func startChatBridge(client *WSClient, cluster string) {
+	cluster = strings.TrimSpace(cluster)
+	if cluster == "" {
+		return
+	}
+
+	chatBridge.Lock()
+	if chatBridge.Stop != nil {
+		close(chatBridge.Stop)
+	}
+	stop := make(chan struct{})
+	chatBridge.Enabled = true
+	chatBridge.Cluster = cluster
+	chatBridge.Stop = stop
+	chatBridge.Unlock()
+
+	go pollChatLog(client, cluster, stop)
+	log.Printf("[chat-bridge] enabled for %s", cluster)
+}
+
+func stopChatBridge() {
+	chatBridge.Lock()
+	if chatBridge.Stop != nil {
+		close(chatBridge.Stop)
+	}
+	chatBridge.Enabled = false
+	chatBridge.Cluster = ""
+	chatBridge.Stop = nil
+	chatBridge.Unlock()
+	log.Printf("[chat-bridge] disabled")
+}
+
+func pollChatLog(client *WSClient, cluster string, stop <-chan struct{}) {
+	world, path, err := resolveChatLogPath(cluster)
+	if err != nil {
+		log.Printf("[chat-bridge] resolve chat log failed: %v", err)
+		return
+	}
+	displayCluster := resolveClusterDisplayName(cluster)
+
+	var offset int64
+	if stat, err := os.Stat(path); err == nil {
+		offset = stat.Size()
+	}
+
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case <-ticker.C:
+			newOffset, err := readNewChatLines(client, displayCluster, world, path, offset)
+			if err != nil {
+				log.Printf("[chat-bridge] read chat log failed: %v", err)
+				continue
+			}
+			offset = newOffset
+		}
+	}
+}
+
+func resolveChatLogPath(cluster string) (string, string, error) {
+	script := fmt.Sprintf(
+		"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; for world in Master Caves Shipwrecked Volcano; do file=\"$base/$world/server_chat_log.txt\"; if [ -f \"$file\" ]; then printf '%%s\\t%%s\\n' \"$world\" \"$file\"; exit 0; fi; done; exit 1",
+		shellQuote(config.ScriptPath),
+		shellQuote(cluster),
+		shellEscapeForDoubleQuoted(cluster),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, config.Shell, "-lc", script).Output()
+	if err != nil {
+		return "", "", err
+	}
+	parts := strings.SplitN(strings.TrimSpace(string(output)), "\t", 2)
+	if len(parts) != 2 {
+		return "", "", fmt.Errorf("invalid chat log path output: %q", strings.TrimSpace(string(output)))
+	}
+	return displayWorldName(parts[0]), parts[1], nil
+}
+
+func resolveClusterDisplayName(cluster string) string {
+	if name := readClusterDisplayNameFromFile(cluster); name != "" {
+		return name
+	}
+	script := fmt.Sprintf(
+		"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; file=\"$DST_SAVE_PATH/%s/cluster.ini\"; if [ -f \"$file\" ]; then awk -F '=' '/^[[:space:]]*cluster_name[[:space:]]*=/{value=$2; sub(/^[[:space:]]+/, \"\", value); sub(/[[:space:]]+$/, \"\", value); print value; exit}' \"$file\"; fi",
+		shellQuote(config.ScriptPath),
+		shellQuote(cluster),
+		shellEscapeForDoubleQuoted(cluster),
+	)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, config.Shell, "-lc", script).Output()
+	if err != nil {
+		log.Printf("[chat-bridge] resolve cluster display name failed: %v", err)
+		return cluster
+	}
+	name := strings.TrimSpace(string(output))
+	if name == "" {
+		return cluster
+	}
+	return name
+}
+
+func readClusterDisplayNameFromFile(cluster string) string {
+	cluster = strings.TrimSpace(cluster)
+	if cluster == "" {
+		return ""
+	}
+	data, err := os.ReadFile(filepath.Join(detectSavePath(), cluster, "cluster.ini"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || strings.TrimSpace(key) != "cluster_name" {
+			continue
+		}
+		return strings.TrimSpace(value)
+	}
+	return ""
+}
+
+func clusterDisplayLabel(cluster string) string {
+	displayName := resolveClusterDisplayName(cluster)
+	if displayName == "" || displayName == cluster {
+		return cluster
+	}
+	return fmt.Sprintf("%s (%s)", displayName, cluster)
+}
+
+func clusterInfoLabel(cluster ClusterInfo) string {
+	displayName := strings.TrimSpace(cluster.DisplayName)
+	if displayName == "" {
+		displayName = resolveClusterDisplayName(cluster.Name)
+	}
+	if displayName == "" || displayName == cluster.Name {
+		return cluster.Name
+	}
+	return fmt.Sprintf("%s (%s)", displayName, cluster.Name)
+}
+
+func readNewChatLines(client *WSClient, clusterName string, world string, path string, offset int64) (int64, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return offset, err
+	}
+	defer file.Close()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return offset, err
+	}
+	if stat.Size() < offset {
+		offset = 0
+	}
+	if _, err := file.Seek(offset, io.SeekStart); err != nil {
+		return offset, err
+	}
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		user, text, ok := parseDSTChatLine(scanner.Text())
+		if !ok {
+			continue
+		}
+		sendChatBridgeEvent(client, ChatBridgeEventMessage{
+			Type:    "dst-ws-client.chat",
+			Cluster: clusterName,
+			World:   world,
+			User:    user,
+			Text:    text,
+		})
+	}
+	if err := scanner.Err(); err != nil {
+		return offset, err
+	}
+	return stat.Size(), nil
+}
+
+func parseDSTChatLine(line string) (string, string, bool) {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.Contains(line, "[Announcement]") {
+		return "", "", false
+	}
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`^\[[^\]]+\]:\s*\[(?:Say|Whisper|Yell|Chat)\]\s*(?:\([^)]*\)\s*)?([^:]+):\s*(.+)$`),
+		regexp.MustCompile(`^\[[^\]]+\]:\s*(?:\[[^\]]+\]\s*)?(?:\([^)]*\)\s*)?([^:]+):\s*(.+)$`),
+	}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(line)
+		if len(matches) != 3 {
+			continue
+		}
+		user := strings.TrimSpace(matches[1])
+		text := strings.TrimSpace(matches[2])
+		if user == "" || text == "" || strings.HasPrefix(user, "[") {
+			return "", "", false
+		}
+		return user, text, true
+	}
+	return "", "", false
+}
+
+func sendChatBridgeEvent(client *WSClient, event ChatBridgeEventMessage) {
+	payload, err := json.Marshal(event)
+	if err != nil {
+		log.Printf("[chat-bridge] marshal event failed: %v", err)
+		return
+	}
+	writeClientText(client, string(payload))
+}
+
+func sendDSTAnnouncement(cluster string, text string) error {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := newScriptCommand(ctx, []string{"__announce", cluster, text})
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, cleanForChat(string(output), 1000))
+	}
+	return nil
+}
+
+func displayWorldName(world string) string {
+	switch strings.ToLower(strings.TrimSpace(world)) {
+	case "master":
+		return "地上"
+	case "caves":
+		return "地下"
+	case "shipwrecked":
+		return "海难"
+	case "volcano":
+		return "火山"
+	default:
+		if strings.TrimSpace(world) == "" {
+			return "未知世界"
+		}
+		return world
 	}
 }
 
@@ -1446,7 +1809,7 @@ func connectedMessage() string {
 	clusters := clusterCandidates()
 	if len(clusters) == 0 {
 		if configured := strings.TrimSpace(config.DefaultCluster); configured != "" && !isAutoClusterSelector(configured) {
-			return "DST 脚本客户端已连接：" + configured
+			return "DST 脚本客户端已连接：" + clusterDisplayLabel(configured)
 		}
 		return "DST 脚本客户端已连接：未发现存档"
 	}
@@ -1511,7 +1874,7 @@ func formatClusterList() string {
 	if len(running) > 0 {
 		lines = append(lines, "运行中：")
 		for index, cluster := range running {
-			lines = append(lines, fmt.Sprintf("#%d %s%s (%s)", index+1, cluster.Name, formatClusterAliasSuffix(cluster.Name), strings.Join(cluster.Worlds, ", ")))
+			lines = append(lines, fmt.Sprintf("#%d %s%s (%s)", index+1, clusterInfoLabel(cluster), formatClusterAliasSuffix(cluster.Name), strings.Join(cluster.Worlds, ", ")))
 		}
 	}
 
@@ -1524,7 +1887,7 @@ func formatClusterList() string {
 	if len(savedOnly) > 0 {
 		lines = append(lines, "未运行：")
 		for _, cluster := range savedOnly {
-			lines = append(lines, fmt.Sprintf("- %s%s (%s)", cluster.Name, formatClusterAliasSuffix(cluster.Name), strings.Join(cluster.Worlds, ", ")))
+			lines = append(lines, fmt.Sprintf("- %s%s (%s)", clusterInfoLabel(cluster), formatClusterAliasSuffix(cluster.Name), strings.Join(cluster.Worlds, ", ")))
 		}
 	}
 	if len(running) == 0 && len(savedOnly) == 0 {
@@ -1549,7 +1912,7 @@ func formatClusterChoices(clusters []ClusterInfo) string {
 		if len(cluster.Worlds) > 0 {
 			suffix = " (" + strings.Join(cluster.Worlds, ", ") + ")"
 		}
-		lines = append(lines, fmt.Sprintf("#%d %s%s%s", index+1, cluster.Name, formatClusterAliasSuffix(cluster.Name), suffix))
+		lines = append(lines, fmt.Sprintf("#%d %s%s%s", index+1, clusterInfoLabel(cluster), formatClusterAliasSuffix(cluster.Name), suffix))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1576,7 +1939,7 @@ func aliasesForCluster(cluster string) []string {
 func clusterNames(clusters []ClusterInfo) []string {
 	names := make([]string, 0, len(clusters))
 	for _, cluster := range clusters {
-		names = append(names, cluster.Name)
+		names = append(names, clusterInfoLabel(cluster))
 	}
 	return names
 }
@@ -1608,7 +1971,7 @@ func parseScreenClusters(output string) []ClusterInfo {
 		}
 		info := byName[cluster]
 		if info == nil {
-			info = &ClusterInfo{Name: cluster, Running: true}
+			info = &ClusterInfo{Name: cluster, DisplayName: resolveClusterDisplayName(cluster), Running: true}
 			byName[cluster] = info
 		}
 		addWorld(info, world)
@@ -1667,7 +2030,7 @@ func discoverSavedClusters() ([]ClusterInfo, error) {
 		}
 		name := entry.Name()
 		clusterPath := filepath.Join(savePath, name)
-		info := &ClusterInfo{Name: name}
+		info := &ClusterInfo{Name: name, DisplayName: readClusterDisplayNameFromFile(name)}
 		if dirExists(filepath.Join(clusterPath, "Master")) {
 			addWorld(info, "Master")
 		}
@@ -1740,6 +2103,7 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 	var cmd *exec.Cmd
 	if len(argv) == 2 && argv[0] == "__status" {
 		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
 		script := fmt.Sprintf(
 			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; master='未配置'; caves='未配置'; if [ -d \"$DST_SAVE_PATH/%s/Master\" ]; then if screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; else master='未运行'; fi; fi; if [ -d \"$DST_SAVE_PATH/%s/Caves\" ]; then if screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; else caves='未运行'; fi; fi; printf '存档: %s\\n地上: %s\\n地下: %s\\n' %s \"$master\" \"$caves\"",
 			shellQuote(config.ScriptPath),
@@ -1749,13 +2113,29 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 			"%s",
 			"%s",
 			"%s",
-			shellQuote(cluster),
+			shellQuote(displayCluster),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 2 && argv[0] == "__source_close_server" {
 		cluster := argv[1]
 		script := fmt.Sprintf(
 			"set -- __dst_ws_service; source %s; init %s; close_server %s -close",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+		)
+		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
+	} else if len(argv) == 2 && argv[0] == "__start_server" {
+		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
+		script := fmt.Sprintf(
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; get_process_name %s; master='未运行'; caves='未运行'; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; fi; if [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; fi; if [ \"$master\" = '运行中' ] || [ \"$caves\" = '运行中' ]; then printf '服务器已开启：%s\\n地上：%%s\\n地下：%%s\\n' \"$master\" \"$caves\"; exit 0; fi; if [ -n \"${process_name_AutoUpdate:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_AutoUpdate\\>\"; then echo \"守护进程已运行：$process_name_AutoUpdate\"; else get_path_script_files %s; screen -dmS \"$process_name_AutoUpdate\" /bin/sh -c \"$script_files_path/auto_update.sh\"; echo \"守护进程已启动：$process_name_AutoUpdate\"; fi; timeout --kill-after=5s 75s bash -lc %s; rc=$?; source %s >/dev/null; init %s >/dev/null; get_process_name %s; master='未运行'; caves='未运行'; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; fi; if [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; fi; printf '\\n状态确认：地上 %%s\\n状态确认：地下 %%s\\n' \"$master\" \"$caves\"; if [ \"$master\" = '运行中' ] || [ \"$caves\" = '运行中' ]; then exit 0; fi; exit \"$rc\"",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+			shellEscapeForDoubleQuoted(displayCluster),
+			shellQuote(cluster),
+			shellQuote("source "+shellQuote(config.ScriptPath)+" >/dev/null; init "+shellQuote(cluster)+" >/dev/null; howtostart "+shellQuote(cluster)+" -AUTO"),
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellQuote(cluster),
@@ -1768,7 +2148,11 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 			restartArgs += " " + shellQuote(argv[2])
 		}
 		script := fmt.Sprintf(
-			"set -- __dst_ws_service; timeout --kill-after=5s 75s %s; rc=$?; source %s >/dev/null; init %s >/dev/null; get_process_name %s; master='未运行'; caves='未运行'; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; fi; if [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; fi; printf '\\n状态确认：地上 %%s\\n状态确认：地下 %%s\\n' \"$master\" \"$caves\"; if [ \"$master\" = '运行中' ] || [ \"$caves\" = '运行中' ]; then exit 0; fi; exit \"$rc\"",
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; get_process_name %s; if [ -n \"${process_name_AutoUpdate:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_AutoUpdate\\>\"; then echo \"守护进程已运行：$process_name_AutoUpdate\"; else get_path_script_files %s; screen -dmS \"$process_name_AutoUpdate\" /bin/sh -c \"$script_files_path/auto_update.sh\"; echo \"守护进程已启动：$process_name_AutoUpdate\"; fi; timeout --kill-after=5s 75s %s; rc=$?; source %s >/dev/null; init %s >/dev/null; get_process_name %s; master='未运行'; caves='未运行'; if [ -n \"${process_name_master:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_master\\>\"; then master='运行中'; fi; if [ -n \"${process_name_caves:-}\" ] && screen -ls | grep --text -q \"\\<$process_name_caves\\>\"; then caves='运行中'; fi; printf '\\n状态确认：地上 %%s\\n状态确认：地下 %%s\\n' \"$master\" \"$caves\"; if [ \"$master\" = '运行中' ] || [ \"$caves\" = '运行中' ]; then exit 0; fi; exit \"$rc\"",
+			shellQuote(config.ScriptPath),
+			shellQuote(cluster),
+			shellQuote(cluster),
+			shellQuote(cluster),
 			restartArgs,
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
@@ -1789,6 +2173,7 @@ func newScriptCommand(ctx context.Context, argv []string) *exec.Cmd {
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 2 && argv[0] == "__mod_info" {
 		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
 		script := fmt.Sprintf(
 			`set -- __dst_ws_service
 source %s >/dev/null
@@ -1881,21 +2266,23 @@ done`,
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellEscapeForDoubleQuoted(cluster),
-			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(displayCluster),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 2 && argv[0] == "__world_info" {
 		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
 		script := fmt.Sprintf(
 			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; echo \"World info: %s\"; if [ -f \"$base/cluster.ini\" ]; then echo; echo \"[cluster.ini]\"; sed -n '1,120p' \"$base/cluster.ini\"; fi; found=0; for world in Master Caves; do file=\"$base/$world/leveldataoverride.lua\"; [ -f \"$file\" ] || continue; found=1; echo; echo \"[$world leveldataoverride.lua]\"; sed -n '1,180p' \"$file\"; done; if [ \"$found\" -ne 1 ]; then echo \"no leveldataoverride.lua found\"; exit 1; fi",
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellEscapeForDoubleQuoted(cluster),
-			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(displayCluster),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 2 && argv[0] == "__runtime_world_info" {
 		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
 		script := fmt.Sprintf(
 			`set -- __dst_ws_service
 source %s >/dev/null
@@ -1908,7 +2295,30 @@ fi
 getworldstate
 getmonster
 n(){ if [ -n "$1" ]; then printf '%%s' "$1"; else printf '0'; fi; }
+current_version=""
+[ -f "$gamesPath/version.txt" ] && current_version=$(tr -d '[:space:]' < "$gamesPath/version.txt")
+current_buildid=$(grep --text -m 1 '"buildid"' "$gamesPath/steamapps/appmanifest_343050.acf" 2>/dev/null | sed 's/[^0-9]//g')
+latest_version="未知"
+version_status="无法检查"
+if [ -n "$current_version" ]; then
+	response=$(curl -s --connect-timeout 8 --max-time 15 "http://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=322330&version=${current_version}" || true)
+	if command -v jq >/dev/null 2>&1 && echo "$response" | jq -e '.response.success == true' >/dev/null 2>&1; then
+		up_to_date=$(echo "$response" | jq -r '.response.up_to_date')
+		if [ "$up_to_date" = "true" ]; then
+			latest_version="$current_version"
+			version_status="已是最新"
+		elif [ "$up_to_date" = "false" ]; then
+			latest_version="Steam 已有更新"
+			version_status="需要更新"
+		else
+			version_status="Steam 返回异常"
+		fi
+	else
+		version_status="Steam 检查失败"
+	fi
+fi
 echo "世界信息 - %s"
+echo "版本：当前 ${current_version:-未知} | 最新 $latest_version | 状态 $version_status | buildid ${current_buildid:-未知}"
 echo "状态：第$(n "$presentcycles")天，$presentseason 第$(n "$presentday")天，$presentphase / $presentmoonphase / $presentrain / $presentsnow / $(n "$presenttemperature")°C"
 if screen -ls | grep --text -q "\<$process_name_master\>"; then
 	echo ""
@@ -1925,17 +2335,18 @@ fi`,
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellQuote(cluster),
-			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(displayCluster),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 2 && argv[0] == "__chat_log" {
 		cluster := argv[1]
+		displayCluster := clusterDisplayLabel(cluster)
 		script := fmt.Sprintf(
-			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; echo \"Recent chat log: %s\"; found=0; for world in Master Caves; do file=\"$base/$world/server_chat_log.txt\"; [ -f \"$file\" ] || continue; found=1; echo; echo \"[$world]\"; tail -n 80 \"$file\"; done; if [ \"$found\" -ne 1 ]; then echo \"no server_chat_log.txt found\"; exit 1; fi",
+			"set -- __dst_ws_service; source %s >/dev/null; init %s >/dev/null; base=\"$DST_SAVE_PATH/%s\"; echo \"Recent chat log: %s\"; found=0; for world in Master Caves Shipwrecked Volcano; do file=\"$base/$world/server_chat_log.txt\"; [ -f \"$file\" ] || continue; found=1; echo; echo \"[$world]\"; tail -n 80 \"$file\"; break; done; if [ \"$found\" -ne 1 ]; then echo \"no server_chat_log.txt found\"; exit 1; fi",
 			shellQuote(config.ScriptPath),
 			shellQuote(cluster),
 			shellEscapeForDoubleQuoted(cluster),
-			shellEscapeForDoubleQuoted(cluster),
+			shellEscapeForDoubleQuoted(displayCluster),
 		)
 		cmd = exec.CommandContext(ctx, config.Shell, "-lc", script)
 	} else if len(argv) == 3 && argv[0] == "__announce" {
@@ -2047,6 +2458,8 @@ func readFrameFrom(reader io.Reader, requireMasked bool) (byte, []byte, error) {
 }
 
 func writeClientText(client *WSClient, text string) {
+	wsWriteMu.Lock()
+	defer wsWriteMu.Unlock()
 	if err := writeClientFrame(client, 0x1, []byte(text)); err != nil {
 		log.Printf("[client] write failed: %v", err)
 	}

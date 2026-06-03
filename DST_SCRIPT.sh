@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.17"
+script_version="1.8.18"
 # git加速链接
 use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
 # 当前系统版本
