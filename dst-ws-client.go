@@ -2298,27 +2298,9 @@ n(){ if [ -n "$1" ]; then printf '%%s' "$1"; else printf '0'; fi; }
 current_version=""
 [ -f "$gamesPath/version.txt" ] && current_version=$(tr -d '[:space:]' < "$gamesPath/version.txt")
 current_buildid=$(grep --text -m 1 '"buildid"' "$gamesPath/steamapps/appmanifest_343050.acf" 2>/dev/null | sed 's/[^0-9]//g')
-latest_version="未知"
-version_status="无法检查"
-if [ -n "$current_version" ]; then
-	response=$(curl -s --connect-timeout 8 --max-time 15 "http://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=322330&version=${current_version}" || true)
-	if command -v jq >/dev/null 2>&1 && echo "$response" | jq -e '.response.success == true' >/dev/null 2>&1; then
-		up_to_date=$(echo "$response" | jq -r '.response.up_to_date')
-		if [ "$up_to_date" = "true" ]; then
-			latest_version="$current_version"
-			version_status="已是最新"
-		elif [ "$up_to_date" = "false" ]; then
-			latest_version="Steam 已有更新"
-			version_status="需要更新"
-		else
-			version_status="Steam 返回异常"
-		fi
-	else
-		version_status="Steam 检查失败"
-	fi
-fi
+version_status="以 SteamCMD 同步检查为准"
 echo "世界信息 - %s"
-echo "版本：当前 ${current_version:-未知} | 最新 $latest_version | 状态 $version_status | buildid ${current_buildid:-未知}"
+echo "版本：当前 ${current_version:-未知} | 状态 $version_status | buildid ${current_buildid:-未知}"
 echo "状态：第$(n "$presentcycles")天，$presentseason 第$(n "$presentday")天，$presentphase / $presentmoonphase / $presentrain / $presentsnow / $(n "$presenttemperature")°C"
 if screen -ls | grep --text -q "\<$process_name_master\>"; then
 	echo ""

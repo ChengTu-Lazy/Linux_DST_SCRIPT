@@ -20,7 +20,7 @@ os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' 
 # 脚本当前所在目录
 script_path=$(pwd)
 # 脚本当前名称
-SCRIPT_NAME=$(basename "$0")
+SCRIPT_NAME=$(basename -- "${BASH_SOURCE[0]:-$0}")
 
 STEAMCMD_BIN=""
 
@@ -1104,6 +1104,22 @@ update_game() {
 	fi
 }
 
+get_game_version_value() {
+	local game_path=$1
+	local version_file="$game_path/version.txt"
+	if [ -f "$version_file" ]; then
+		tr -d '[:space:]' <"$version_file"
+	fi
+}
+
+get_game_buildid_value() {
+	local game_path=$1
+	local manifest_file="$game_path/steamapps/appmanifest_343050.acf"
+	if [ -f "$manifest_file" ]; then
+		grep --text -m 1 '"buildid"' "$manifest_file" 2>/dev/null | sed 's/[^0-9]//g'
+	fi
+}
+
 # 关闭服务器
 close_server() {
 	cluster_name=$1
@@ -1225,46 +1241,47 @@ checkupdate() {
     get_path_script_files "$cluster_name"
     DST_now=$(date +%Y年%m月%d日%H:%M)
 
-    local version_file="$gamesPath/version.txt"
     local local_version=""
+    local local_buildid=""
     local new_version=""
-    local response=""
-    local curl_exit_status=0
-    local success=""
-    local up_to_date=""
-    local jq_status=0
+    local new_buildid=""
     local update_version_flag="BETA"
-    local fallback_reason=""
 
     if [ "$buildid_version_flag" == "public" ]; then
         update_version_flag="DEFAULT"
     fi
 
-    if [ -f "$version_file" ]; then
-        local_version=$(tr -d '[:space:]' < "$version_file")
-    fi
+    local_version=$(get_game_version_value "$gamesPath")
+    local_buildid=$(get_game_buildid_value "$gamesPath")
 
-    update_game_and_restart_if_version_changed() {
+    update_game_and_restart_if_changed() {
         local old_version=$1
-        local update_flag=$2
+        local old_buildid=$2
+        local update_flag=$3
 
         if [ "$update_flag" == "DEFAULT" ]; then
             echo -e "\e[33m${DST_now}:更新正式版游戏本体中。。。 \e[0m"
-            update_game DEFAULT
+            if ! update_game DEFAULT; then
+                echo -e "\e[1;31m${DST_now}:SteamCMD 更新正式版游戏本体失败，跳过重启\e[0m"
+                return 1
+            fi
         else
             echo -e "\e[33m${DST_now}:更新测试版游戏本体中。。。 \e[0m"
-            update_game BETA
+            if ! update_game BETA; then
+                echo -e "\e[1;31m${DST_now}:SteamCMD 更新测试版游戏本体失败，跳过重启\e[0m"
+                return 1
+            fi
         fi
 
-        new_version=""
-        if [ -f "$version_file" ]; then
-            new_version=$(tr -d '[:space:]' < "$version_file")
-        fi
+        new_version=$(get_game_version_value "$gamesPath")
+        new_buildid=$(get_game_buildid_value "$gamesPath")
 
         echo -e "\e[92m更新前版本号: ${old_version:-未知}\e[0m"
         echo -e "\e[92m更新后版本号: ${new_version:-未知}\e[0m"
+        echo -e "\e[92m更新前buildid: ${old_buildid:-未知}\e[0m"
+        echo -e "\e[92m更新后buildid: ${new_buildid:-未知}\e[0m"
 
-        if [ "$new_version" != "$old_version" ]; then
+        if [ "$new_version" != "$old_version" ] || [ "$new_buildid" != "$old_buildid" ]; then
             auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
             c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
             if [ "$auto_update_anyway" == "true" ]; then
@@ -1273,7 +1290,7 @@ checkupdate() {
                 restart_server "$cluster_name" -AUTO -NOBODY
             fi
         else
-            echo -e "\e[92m${DST_now}:已执行更新但版本号未变化，不重启\e[0m"
+            echo -e "\e[92m${DST_now}:已执行SteamCMD同步，游戏版本号和buildid均未变化，不重启\e[0m"
         fi
     }
 
@@ -1281,47 +1298,15 @@ checkupdate() {
     echo "清理3天前的Steam用户数据..."
     clean_steam_userdata
 
-    if [ -z "$local_version" ]; then
-        echo -e "\e[33m${DST_now}:未找到有效的version.txt，直接执行游戏更新...\e[0m"
-        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
-        return 0
-    fi
-
-    echo -e "\e[92m当前游戏服务端版本号: $local_version\e[0m"
-    echo "正在通过Steam官方接口检查游戏更新。。。"
-
-    response=$(curl -s --connect-timeout 10 --max-time 20 "http://api.steampowered.com/ISteamApps/UpToDateCheck/v1/?appid=322330&version=${local_version}")
-    curl_exit_status=$?
-
-    if [ $curl_exit_status -ne 0 ]; then
-        fallback_reason="官方接口请求失败"
+    if [ -z "$local_version" ] && [ -z "$local_buildid" ]; then
+        echo -e "\e[33m${DST_now}:未找到有效的version.txt和appmanifest_343050.acf，直接执行游戏更新...\e[0m"
     else
-        success=$(jq -r '.response.success' 2>/dev/null <<< "$response")
-        jq_status=$?
-        if [ $jq_status -ne 0 ] || [ -z "$success" ] || [ "$success" == "null" ]; then
-            fallback_reason="官方接口返回异常，无法解析success"
-        elif [ "$success" != "true" ]; then
-            fallback_reason="官方接口返回success=$success"
-        else
-            up_to_date=$(jq -r '.response.up_to_date' 2>/dev/null <<< "$response")
-            jq_status=$?
-            if [ $jq_status -ne 0 ] || [ -z "$up_to_date" ] || [ "$up_to_date" == "null" ] || { [ "$up_to_date" != "true" ] && [ "$up_to_date" != "false" ]; }; then
-                fallback_reason="官方接口返回异常，无法解析up_to_date"
-            fi
-        fi
+        echo -e "\e[92m当前游戏服务端版本号: ${local_version:-未知}\e[0m"
+        echo -e "\e[92m当前游戏服务端buildid: ${local_buildid:-未知}\e[0m"
     fi
 
-    if [ -n "$fallback_reason" ]; then
-        echo -e "\e[33m${DST_now}:${fallback_reason}，执行steamcmd更新作为fallback...\e[0m"
-        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
-    elif [ "$up_to_date" == "true" ]; then
-        echo -e "\e[92m${DST_now}:游戏服务端没有更新!\e[0m"
-    else
-        echo " "
-        echo -e "\e[31m${DST_now}:游戏服务端有更新! \e[0m"
-        echo " "
-        update_game_and_restart_if_version_changed "$local_version" "$update_version_flag"
-    fi
+    echo "正在通过SteamCMD同步并检查游戏本体更新。。。"
+    update_game_and_restart_if_changed "$local_version" "$local_buildid" "$update_version_flag"
 }
 
 # 检查游戏mod更新情况
@@ -1654,6 +1639,7 @@ auto_update() {
 		fi
 	}
 	timecheck=0
+	maintenance_interval=750
 	# 保持运行
 	while :
 			do
@@ -1661,11 +1647,13 @@ auto_update() {
 				script -get_playerList
 				get_daysInfo		
 				echo \"当前服务器天数:\$presentday\"		
-				timecheck=\$(( timecheck%750 ))
+				timecheck=\$(( timecheck%maintenance_interval ))
 				backup
+				if [ \"\$timecheck\" == 0 ]; then
+					script -checkupdate
+					script -checkmodupdate
+				fi
 				((timecheck++))
-				script -checkupdate
-				script -checkmodupdate
 				sleep 10
 			done
 	" >"$script_files_path"/auto_update.sh
