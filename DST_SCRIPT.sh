@@ -12,16 +12,16 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.19"
+script_version="1.8.20"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
 # 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
-# 脚本当前所在目录
-script_path=$(pwd)
-# 脚本当前名称
-SCRIPT_NAME=$(basename -- "${BASH_SOURCE[0]:-$0}")
+# 脚本实际所在目录及名称，避免从其他工作目录启动时更新到错误位置
+SCRIPT_SOURCE="${BASH_SOURCE[0]:-$0}"
+script_path=$(cd -- "$(dirname -- "$SCRIPT_SOURCE")" && pwd)
+SCRIPT_NAME=$(basename -- "$SCRIPT_SOURCE")
 
 STEAMCMD_BIN=""
 

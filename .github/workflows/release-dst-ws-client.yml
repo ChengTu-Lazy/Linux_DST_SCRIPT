@@ -51,10 +51,11 @@ jobs:
             - 脚本更新默认使用 GitHub 官方仓库，并内置多个经过验证的镜像作为失败回退。
             - 支持通过 `DST_SCRIPT_GIT_URL` 指定最高优先级的自定义镜像。
             - 每个更新源限制等待 45 秒，全部失败时安全停止，不再复制不存在的脚本文件。
+            - 修复从脚本目录之外启动时，菜单 `[9] 获取最新脚本` 将新脚本覆盖到错误目录的问题。
             - `dst-ws-client` 世界信息中的版本状态统一提示以 SteamCMD 同步检查为准。
 
             ### 发布内容
 
             - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.19`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.20`。
           fail_on_unmatched_files: true
