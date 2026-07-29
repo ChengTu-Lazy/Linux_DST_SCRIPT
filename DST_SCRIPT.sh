@@ -12,9 +12,10 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.18"
-# git加速链接
-use_acceleration_url="https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT"
+script_version="1.8.19"
+# 脚本更新仓库，可通过环境变量指定优先使用的镜像
+DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
+DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
 # 当前系统版本
 os=$(awk -F = '/^NAME/{print $2}' /etc/os-release | sed 's/"//g' | sed 's/ //g' | sed 's/Linux//g' | sed 's/linux//g')
 # 脚本当前所在目录
@@ -2242,6 +2243,19 @@ get_server_save_path_caves() {
 
 # 获取最新版脚本
 get_latest_version() {
+	local git_url
+	local clone_succeeded=false
+	local git_urls=()
+	if [ -n "$DST_SCRIPT_GIT_URL" ]; then
+		git_urls+=("$DST_SCRIPT_GIT_URL")
+	fi
+	git_urls+=(
+		"$DST_SCRIPT_OFFICIAL_GIT_URL"
+		"https://ghfast.top/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+		"https://gh-proxy.com/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+		"https://ghproxy.net/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
+	)
+
 	if [ -d "$HOME/clone_tamp" ]; then
 		rm -rf "$HOME/clone_tamp"
 		mkdir "$HOME/clone_tamp"
@@ -2249,18 +2263,26 @@ get_latest_version() {
 		mkdir "$HOME/clone_tamp"
 	fi
 	clear
-	echo "下载时间超过10s,就是网络问题,请CTRL+C强制退出,再次尝试,实在不行手动下载最新的。"
 	cd "$HOME/clone_tamp" || exit
-	echo "是否使用git加速链接下载?"
-	echo "请输入 Y/y 同意 或者 N/n 拒绝并使用官方链接,推荐使用加速链接,失效了再用原版链接"
-	read -r use_acceleration
-	if [ "${use_acceleration}" == "Y" ] || [ "${use_acceleration}" == "y" ]; then
-		git clone "${use_acceleration_url}"
-	elif [ "${use_acceleration}" == "N" ] || [ "${use_acceleration}" == "n" ]; then
-		git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
-	else
-		echo "输入有误,请重新输入"
-		get_latest_version
+	for git_url in "${git_urls[@]}"; do
+		echo "正在从 ${git_url} 获取最新版脚本..."
+		rm -rf "$HOME/clone_tamp/Linux_DST_SCRIPT"
+		if command -v timeout >/dev/null 2>&1; then
+			timeout 45 git clone --depth 1 "$git_url" Linux_DST_SCRIPT
+		else
+			git clone --depth 1 "$git_url" Linux_DST_SCRIPT
+		fi
+		if [ $? -eq 0 ]; then
+			clone_succeeded=true
+			break
+		fi
+		echo -e "\e[33m当前下载源不可用，正在尝试下一个地址...\e[0m"
+	done
+	if [ "$clone_succeeded" != true ]; then
+		echo -e "\e[1;31m所有内置下载源均不可用，请检查网络，或通过 DST_SCRIPT_GIT_URL 指定其他镜像。\e[0m"
+		cd "$script_path" || exit
+		rm -rf "$HOME/clone_tamp"
+		return 1
 	fi
 	cp "$HOME/clone_tamp/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$script_path/$SCRIPT_NAME"
 	cd "$script_path" || exit

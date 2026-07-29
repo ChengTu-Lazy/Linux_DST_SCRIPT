@@ -62,10 +62,13 @@ $HOME/.klei/DoNotStarveTogether
 git clone "https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod +x "$HOME/DST_SCRIPT.sh" && "$HOME/DST_SCRIPT.sh"
 ```
 
-GitHub 网络环境不允许时可使用加速地址：
+脚本更新会依次尝试 GitHub 官方仓库以及内置的 `ghfast.top`、`gh-proxy.com`、`ghproxy.net` 镜像，每个地址最多等待 45 秒。公共镜像的安全性和稳定性不由本项目保证，网络允许时优先使用 GitHub 官方仓库。
+
+也可以通过 `DST_SCRIPT_GIT_URL` 指定一个最高优先级的自定义镜像地址：
 
 ```bash
-git clone "https://ghp.quickso.cn/https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT" && cp "$HOME/Linux_DST_SCRIPT/DST_SCRIPT.sh" "$HOME/DST_SCRIPT.sh" && rm -rf "$HOME/Linux_DST_SCRIPT" && chmod +x "$HOME/DST_SCRIPT.sh" && "$HOME/DST_SCRIPT.sh"
+export DST_SCRIPT_GIT_URL="你的可用镜像仓库地址"
+./DST_SCRIPT.sh
 ```
 
 ## 发布单文件程序
@@ -81,8 +84,8 @@ dst-ws-client-linux-amd64
 发布新版本：
 
 ```bash
-git tag v1.8.18
-git push origin v1.8.18
+git tag v1.8.19
+git push origin v1.8.19
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。
