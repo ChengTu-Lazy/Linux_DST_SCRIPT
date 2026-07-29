@@ -45,6 +45,7 @@ jobs:
             ### 调整与修复
 
             - 游戏本体更新改为通过 SteamCMD 实际同步，并对比 `version.txt` 与 `appmanifest_343050.acf` 中的 buildid。
+            - 同时校验 SteamCMD 退出码与 `App '343050' fully installed` 成功标志，避免错误输出被当作更新完成。
             - 仅在游戏版本号或 buildid 变化时重启服务器，SteamCMD 更新失败时跳过重启。
             - 自动维护中的游戏与 Mod 更新检查调整为约每 125 分钟执行一次，不再每 10 秒触发。
             - 脚本更新默认使用 GitHub 官方仓库，并内置多个经过验证的镜像作为失败回退。

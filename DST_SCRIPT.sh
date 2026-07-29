@@ -1094,15 +1094,34 @@ restart_server() {
 
 # 更新游戏
 update_game() {
-	version_flag=$1
+	local version_flag=$1
+	local steamcmd_log
+	local steamcmd_status
+	steamcmd_log=$(mktemp) || return 1
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
 	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
-		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit 2>&1 | tee "$steamcmd_log"
 	else
 		echo "同步最新测试版版游戏本体内容中。。。"
-		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
+		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta "$BETA_TOKEN" validate +quit 2>&1 | tee "$steamcmd_log"
 	fi
+	steamcmd_status=${PIPESTATUS[0]}
+
+	if [ "$steamcmd_status" -ne 0 ]; then
+		echo -e "\e[1;31mSteamCMD 进程执行失败，退出码: $steamcmd_status\e[0m"
+		rm -f "$steamcmd_log"
+		return 1
+	fi
+	if ! grep --text -Fq "Success! App '343050' fully installed." "$steamcmd_log"; then
+		echo -e "\e[1;31mSteamCMD 未返回游戏本体安装成功标志，本次更新按失败处理。\e[0m"
+		grep --text -E 'ERROR!|Error!|FAILED|Failure' "$steamcmd_log" | tail -n 10 || true
+		rm -f "$steamcmd_log"
+		return 1
+	fi
+
+	rm -f "$steamcmd_log"
+	return 0
 }
 
 get_game_version_value() {
