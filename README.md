@@ -73,7 +73,7 @@ export DST_SCRIPT_GIT_URL="你的可用镜像仓库地址"
 
 ## 发布单文件程序
 
-GitHub Actions 只会在推送 tag 时构建并创建 GitHub Release，普通提交和 pull request 不会主动生成版本。
+GitHub Actions 只会在推送 tag 时构建并创建 GitHub Release，普通提交、pull request 或只修改 `DST_SCRIPT.sh` 中的 `script_version` 都不会主动生成版本。
 
 当前只构建 Linux amd64：
 
@@ -81,11 +81,13 @@ GitHub Actions 只会在推送 tag 时构建并创建 GitHub Release，普通提
 dst-ws-client-linux-amd64
 ```
 
-发布新版本：
+发布新版本前，需要确认 `DST_SCRIPT.sh` 中的 `script_version`、下面的 tag 示例以及 Release workflow 中的更新说明保持一致。
+
+发布命令：
 
 ```bash
-git tag v1.8.20
-git push origin v1.8.20
+git tag v1.8.21
+git push origin v1.8.21
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。
