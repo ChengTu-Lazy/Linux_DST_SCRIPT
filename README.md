@@ -25,9 +25,11 @@
 - 崩档后自动重启服务器。
 - 提供默认的 token 文件模板。
 - 自动识别并添加 mod，无需手动添加，不再使用 Klei 提供的 `dedicated_server_mods_setup.lua`，改用 http 和 steamcmd 下载游戏 mod。
-- 每五小时自动备份一次存档，备份文件位于 `save_bak`，每个世界单独备份。
-- 每分钟统计一次玩家列表备份，备份文件位于 `PlayerList`。
-- 控制台功能支持查看服务器信息、回档、复活所有玩家、发送公告、通过备份回档。
+- 自动维护进程在无人在线时按约 125 分钟周期备份存档，备份文件位于各世界的 `save_bak`。
+- 自动维护进程约每 10 秒采集一次玩家快照，历史快照压缩备份位于 `ScriptFiles/Player`。
+- 控制台功能支持查看服务器信息、回档、复活所有玩家、发送公告、通过备份回档，以及玩家管理（踢出、Ban、解除 Ban、添加/移除管理员）。
+- 玩家管理优先读取 `ScriptFiles/playerlist.txt` 和 `ScriptFiles/Player/*.zip` 中的历史玩家信息；没有历史记录时才查询当前世界。
+- 自动更新进程会把历史玩家快照汇总到 `ScriptFiles/player_statistics.txt`，并持续统计采样次数和估算游玩时长；统计间隔超过 120 秒的部分不会计入，避免停服时间造成虚增。
 
 ## DST 脚本用法
 
@@ -86,8 +88,8 @@ dst-ws-client-linux-amd64
 发布命令：
 
 ```bash
-git tag v1.8.21
-git push origin v1.8.21
+git tag v1.8.22
+git push origin v1.8.22
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。

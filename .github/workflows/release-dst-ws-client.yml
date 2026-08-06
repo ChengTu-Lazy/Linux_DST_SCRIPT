@@ -66,13 +66,20 @@ jobs:
             - 更新完成后比较 `version.txt` 与 buildid，仅确认发生变化时重启服务器。
             - 脚本自更新会先校验候选脚本语法，再通过临时文件原子替换当前脚本。
 
+            ### 玩家管理与历史统计
+
+            - 控制台新增玩家管理，支持踢出、Ban、解除 Ban、添加和移除管理员。
+            - 玩家管理优先使用 `ScriptFiles/playerlist.txt` 与 `ScriptFiles/Player/*.zip` 中的历史人员信息，没有历史记录时查询当前世界。
+            - 自动更新进程汇总历史玩家快照，记录采样次数和估算游玩时长，并限制单次统计增量不超过 120 秒。
+
             ### 验证
 
             - 新增隔离测试脚本，覆盖启动、Mod 修复、关闭、备份、游戏版本检查和脚本自更新流程。
-            - 当前测试结果为 `passed=82 failed=0`。
+            - 新增隔离测试覆盖历史玩家权限、玩家统计和制表符输出。
+            - 当前测试结果为 `passed=95 failed=0`。
 
             ### 发布内容
 
             - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.21`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.22`。
           fail_on_unmatched_files: true

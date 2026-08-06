@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.21"
+script_version="1.8.22"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
@@ -1889,7 +1889,7 @@ console() {
 		echo "                                                                                  "
 		echo "	[4]全体复活            [5]查看玩家       [6]利用备份回档-地上"
 		echo "                                                                                  "
-		echo "	[7]利用备份回档-地下   "
+		echo "	[7]利用备份回档-地下   [8]玩家管理       [9]历史游玩统计"
 		echo "                                                                                  "
 		echo "=================================================================================="
 		echo "                                                                                  "
@@ -1922,11 +1922,444 @@ console() {
 			7)
 				get_server_save_path_caves
 				;;
+			8)
+				player_management "$cluster_name"
+				;;
+			9)
+				show_player_statistics "$cluster_name"
+				;;
 			*)
 				main
 				;;
 			esac)
 	done
+}
+
+# 校验玩家 UserID，避免将历史显示名或其他输入拼进 Lua/权限文件。
+is_valid_player_userid() {
+	[[ "$1" =~ ^KU_[A-Za-z0-9_-]+$ ]]
+}
+
+player_records_from_text() {
+	awk '
+		$1 ~ /^\[[0-9]+\]$/ && $2 ~ /^KU_/ {
+			name = $3
+			for (i = 4; i < NF; i++) {
+				name = name " " $i
+			}
+			gsub(/[\t\r\n]/, " ", name)
+			if (name == "") {
+				name = "未知"
+			}
+			print $2 "\t" name "\t" $NF
+		}
+	'
+}
+
+# 历史压缩包先读，当前 playerlist.txt 最后读，以当前记录覆盖旧昵称/角色。
+get_historical_player_records() {
+	local target_cluster=${1:-$cluster_name}
+	local target_script_files
+	get_path_script_files "$target_cluster"
+	target_script_files=$script_files_path
+	{
+		if [ -d "$target_script_files/Player" ]; then
+			while IFS= read -r -d '' player_zip; do
+				unzip -p "$player_zip" playerlist.txt 2>/dev/null || true
+			done < <(find "$target_script_files/Player" -maxdepth 1 -type f -name '*.zip' -print0)
+		fi
+		if [ -f "$target_script_files/playerlist.txt" ]; then
+			cat "$target_script_files/playerlist.txt"
+		fi
+	} | player_records_from_text | awk -F '\t' '
+		{
+			if (!seen[$1]) {
+				order[++count] = $1
+				seen[$1] = 1
+			}
+			record[$1] = $0
+		}
+		END {
+			for (i = 1; i <= count; i++) {
+				print record[order[i]]
+			}
+		}
+	'
+}
+
+get_player_records() {
+	local target_cluster=${1:-$cluster_name}
+	local records
+	records=$(get_historical_player_records "$target_cluster")
+	if [ -n "$records" ]; then
+		printf '%s\n' "$records"
+		return 0
+	fi
+
+	# 没有历史记录时才查询当前世界；查询结果仍会写入 playerlist.txt。
+	get_playerList "$target_cluster" >/dev/null 2>&1 || true
+	get_historical_player_records "$target_cluster"
+}
+
+get_player_statistics_file() {
+	local target_cluster=${1:-$cluster_name}
+	get_path_script_files "$target_cluster"
+	printf '%s/player_statistics.txt\n' "$script_files_path"
+}
+
+format_player_play_seconds() {
+	local seconds=${1:-0}
+	if ! [[ "$seconds" =~ ^[0-9]+$ ]]; then
+		seconds=0
+	fi
+	printf '%02d小时%02d分%02d秒' "$((seconds / 3600))" "$(((seconds % 3600) / 60))" "$((seconds % 60))"
+}
+
+# 根据一次在线快照增量更新统计。两个快照之间最多按 120 秒计入，避免停服/手动查询造成虚增。
+update_player_statistics_from_list() {
+	local list=$1
+	local target_cluster=${2:-$cluster_name}
+	local seen_epoch=${3:-$(date +%s)}
+	local stats_file
+	local records_file
+	local temp_file
+	[ -n "$list" ] || return 0
+	stats_file=$(get_player_statistics_file "$target_cluster")
+	records_file=$(mktemp) || return 1
+	temp_file=$(mktemp "${stats_file}.tmp.XXXXXX") || {
+		rm -f "$records_file"
+		return 1
+	}
+	printf '%s\n' "$list" | player_records_from_text >"$records_file"
+	[ -s "$stats_file" ] || : >"$stats_file"
+	awk -F '\t' -v OFS='\t' -v stats_file="$stats_file" -v now_epoch="$seen_epoch" '
+		FILENAME == stats_file {
+			if ($1 ~ /^#/ || NF < 7 || $1 !~ /^KU_/) {
+				next
+			}
+			id = $1
+			if (!(id in order_seen)) {
+				order[++order_count] = id
+				order_seen[id] = 1
+			}
+			player_name[id] = $2
+			prefab[id] = $3
+			first_epoch[id] = $4 + 0
+			last_epoch[id] = $5 + 0
+			samples[id] = $6 + 0
+			play_seconds[id] = $7 + 0
+			next
+		}
+		{
+			if ($1 !~ /^KU_/) {
+				next
+			}
+			id = $1
+			if (!(id in order_seen)) {
+				order[++order_count] = id
+				order_seen[id] = 1
+				first_epoch[id] = now_epoch
+				samples[id] = 0
+				play_seconds[id] = 0
+			}
+			if (last_epoch[id] > 0) {
+				delta = now_epoch - last_epoch[id]
+				if (delta < 0) delta = 0
+				if (delta > 120) delta = 120
+				play_seconds[id] += delta
+			}
+			player_name[id] = $2
+			prefab[id] = $3
+			last_epoch[id] = now_epoch
+			samples[id]++
+		}
+		END {
+			print "# userid name prefab first_epoch last_epoch samples play_seconds"
+			for (i = 1; i <= order_count; i++) {
+				id = order[i]
+				print id, player_name[id], prefab[id], first_epoch[id], last_epoch[id], samples[id], play_seconds[id]
+			}
+		}
+	' "$stats_file" "$records_file" >"$temp_file" && mv -f "$temp_file" "$stats_file"
+	local status=$?
+	rm -f "$records_file" "$temp_file"
+	return "$status"
+}
+
+# 将已有 playerlist.txt 和 Player/*.zip 中的快照一次性建立为统计基线。
+rebuild_player_statistics() {
+	local target_cluster=${1:-$cluster_name}
+	local stats_file
+	local history_file
+	local temp_file
+	stats_file=$(get_player_statistics_file "$target_cluster")
+	history_file=$(mktemp) || return 1
+	temp_file=$(mktemp "${stats_file}.tmp.XXXXXX") || {
+		rm -f "$history_file"
+		return 1
+	}
+	{
+		local player_zip
+		get_path_script_files "$target_cluster"
+		if [ -d "$script_files_path/Player" ]; then
+			while IFS= read -r -d '' player_zip; do
+				unzip -p "$player_zip" playerlist.txt 2>/dev/null || true
+			done < <(find "$script_files_path/Player" -maxdepth 1 -type f -name '*.zip' -print0)
+		fi
+		if [ -f "$script_files_path/playerlist.txt" ]; then
+			cat "$script_files_path/playerlist.txt"
+		fi
+	} | awk '
+		$0 ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9] [0-9][0-9]:[0-9][0-9]:[0-9][0-9]$/ {
+			date_text = $0
+			command = "date -d \"" date_text "\" +%s"
+			command | getline snapshot_epoch
+			close(command)
+			next
+		}
+		$1 ~ /^\[[0-9]+\]$/ && $2 ~ /^KU_/ && snapshot_epoch != "" {
+			player_name = $3
+			for (i = 4; i < NF; i++) {
+				player_name = player_name " " $i
+			}
+			gsub(/[\t\r\n]/, " ", player_name)
+			print snapshot_epoch "\t" $2 "\t" player_name "\t" $NF
+		}
+	' | sort -t $'\t' -k1,1n -k2,2 >"$history_file"
+
+	if [ -s "$history_file" ]; then
+		awk -F '\t' -v OFS='\t' '
+			{
+				epoch = $1 + 0
+				id = $2
+				if (!(id in order_seen)) {
+					order[++order_count] = id
+					order_seen[id] = 1
+					first_epoch[id] = epoch
+					samples[id] = 0
+					play_seconds[id] = 0
+				}
+				if (last_epoch[id] > 0) {
+					delta = epoch - last_epoch[id]
+					if (delta < 0) delta = 0
+					if (delta > 120) delta = 120
+					play_seconds[id] += delta
+				}
+				snapshot_name = $3
+				for (i = 4; i < NF; i++) {
+					snapshot_name = snapshot_name " " $i
+				}
+				latest_name[id] = snapshot_name
+				prefab[id] = $NF
+				last_epoch[id] = epoch
+				samples[id]++
+			}
+			END {
+				print "# userid name prefab first_epoch last_epoch samples play_seconds"
+				for (i = 1; i <= order_count; i++) {
+					id = order[i]
+					print id, latest_name[id], prefab[id], first_epoch[id], last_epoch[id], samples[id], play_seconds[id]
+				}
+			}
+		' "$history_file" >"$temp_file" && mv -f "$temp_file" "$stats_file"
+	else
+		: >"$stats_file"
+	fi
+	local status=$?
+	rm -f "$history_file" "$temp_file"
+	return "$status"
+}
+
+show_player_statistics() {
+	local target_cluster=${1:-$cluster_name}
+	local stats_file
+	stats_file=$(get_player_statistics_file "$target_cluster")
+	if ! grep --text -q '^KU_' "$stats_file" 2>/dev/null; then
+		rebuild_player_statistics "$target_cluster" || true
+	fi
+	if ! grep --text -q '^KU_' "$stats_file" 2>/dev/null; then
+		get_playerList "$target_cluster" >/dev/null 2>&1 || true
+	fi
+	if ! grep --text -q '^KU_' "$stats_file" 2>/dev/null; then
+		echo "没有可用的历史玩家游玩记录。"
+		return 0
+	fi
+	echo "=============================历史玩家游玩统计=============================="
+	printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "玩家名" "UserID" "最近角色" "采样次数" "估算游玩时长" "首次记录" "最后记录"
+	while IFS=$'\t' read -r userid name prefab first_epoch last_epoch samples play_seconds; do
+		[ -n "$userid" ] || continue
+		[[ "$userid" == \#* ]] && continue
+		first_time=$(date -d "@$first_epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '未知')
+		last_time=$(date -d "@$last_epoch" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || printf '未知')
+		printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$userid" "$prefab" "$samples" "$(format_player_play_seconds "$play_seconds")" "$first_time" "$last_time"
+	done <"$stats_file"
+}
+
+get_permission_file() {
+	local target_cluster=${1:-$cluster_name}
+	local permission_name=$2
+	get_path_cluster "$target_cluster"
+	printf '%s/%s.txt\n' "$cluster_path" "$permission_name"
+}
+
+permission_file_contains_user() {
+	local permission_file=$1
+	local userid=$2
+	[ -f "$permission_file" ] || return 1
+	awk -v userid="$userid" '$0 == userid || $1 == userid { found = 1 } END { exit found ? 0 : 1 }' "$permission_file"
+}
+
+append_permission_user() {
+	local permission_file=$1
+	local userid=$2
+	local permission_dir
+	is_valid_player_userid "$userid" || return 1
+	permission_dir=$(dirname "$permission_file")
+	mkdir -p "$permission_dir"
+	if ! permission_file_contains_user "$permission_file" "$userid"; then
+		printf '%s\n' "$userid" >>"$permission_file"
+	fi
+}
+
+remove_permission_user() {
+	local permission_file=$1
+	local userid=$2
+	local temp_file
+	[ -f "$permission_file" ] || return 0
+	temp_file=$(mktemp "${permission_file}.tmp.XXXXXX") || return 1
+	awk -v userid="$userid" '$0 != userid && $1 != userid { print }' "$permission_file" >"$temp_file" && mv -f "$temp_file" "$permission_file"
+	local status=$?
+	rm -f "$temp_file"
+	return "$status"
+}
+
+send_player_console_command() {
+	local command=$1
+	get_process_name "$cluster_name"
+	[ -n "$process_name_main" ] || return 1
+	screen -ls 2>/dev/null | grep --text -q "\\<$process_name_main\\>" || return 1
+	screen -S "$process_name_main" -p 0 -X stuff "$command$(printf \\r)"
+}
+
+kick_player() {
+	local userid=$1
+	is_valid_player_userid "$userid" || { echo "玩家 UserID 格式无效。"; return 1; }
+	if send_player_console_command "TheNet:Kick(\"$userid\")"; then
+		echo "已向服务器发送踢出请求：$userid"
+	else
+		echo "当前服务器未运行，无法踢出离线玩家。"
+		return 1
+	fi
+}
+
+ban_player() {
+	local target_cluster=${1:-$cluster_name}
+	local userid=$2
+	local blocklist_file
+	local runtime_applied=false
+	is_valid_player_userid "$userid" || { echo "玩家 UserID 格式无效。"; return 1; }
+	cluster_name=$target_cluster
+	blocklist_file=$(get_permission_file "$target_cluster" blocklist)
+	if send_player_console_command "TheNet:Ban(\"$userid\")"; then
+		runtime_applied=true
+	fi
+	# TheNet:Ban 通常会写入 blocklist；再次持久化可覆盖离线历史玩家场景且不会重复添加。
+	if ! append_permission_user "$blocklist_file" "$userid"; then
+		echo "写入 blocklist.txt 失败，Ban 未完成。"
+		return 1
+	fi
+	if [ "$runtime_applied" = true ]; then
+		echo "已发送 Ban 请求并写入黑名单：$userid"
+	else
+		echo "已写入黑名单：$userid；服务器下次启动时生效。"
+	fi
+}
+
+unban_player() {
+	local target_cluster=${1:-$cluster_name}
+	local userid=$2
+	local blocklist_file
+	is_valid_player_userid "$userid" || { echo "玩家 UserID 格式无效。"; return 1; }
+	cluster_name=$target_cluster
+	blocklist_file=$(get_permission_file "$target_cluster" blocklist)
+	remove_permission_user "$blocklist_file" "$userid" || {
+		echo "更新 blocklist.txt 失败。"
+		return 1
+	}
+	if send_player_console_command "TheNet:Unban(\"$userid\")"; then
+		echo "已解除黑名单并发送即时解除请求：$userid"
+	else
+		echo "已从黑名单移除：$userid；服务器下次启动时生效。"
+	fi
+}
+
+grant_player_admin() {
+	local target_cluster=${1:-$cluster_name}
+	local userid=$2
+	local admin_file
+	is_valid_player_userid "$userid" || { echo "玩家 UserID 格式无效。"; return 1; }
+	admin_file=$(get_permission_file "$target_cluster" adminlist)
+	if ! append_permission_user "$admin_file" "$userid"; then
+		echo "写入 adminlist.txt 失败。"
+		return 1
+	fi
+	echo "已加入管理员名单：$userid；DST 会在下次启动时加载该权限。"
+}
+
+revoke_player_admin() {
+	local target_cluster=${1:-$cluster_name}
+	local userid=$2
+	local admin_file
+	is_valid_player_userid "$userid" || { echo "玩家 UserID 格式无效。"; return 1; }
+	admin_file=$(get_permission_file "$target_cluster" adminlist)
+	if ! remove_permission_user "$admin_file" "$userid"; then
+		echo "更新 adminlist.txt 失败。"
+		return 1
+	fi
+	echo "已从管理员名单移除：$userid；DST 会在下次启动时更新该权限。"
+}
+
+player_management() {
+	local target_cluster=${1:-$cluster_name}
+	local records
+	local selected
+	local selected_record
+	local userid
+	local name
+	local prefab
+	local action
+	local index
+	records=$(get_player_records "$target_cluster")
+	if [ -z "$records" ]; then
+		echo "没有历史玩家信息，当前世界也没有可读取的玩家。"
+		return 0
+	fi
+	echo "玩家管理（优先使用历史玩家信息；没有历史记录时读取当前世界）"
+	index=1
+	while IFS=$'\t' read -r userid name prefab; do
+		printf '[%d] %s\t%s\t%s\n' "$index" "$name" "$userid" "$prefab"
+		index=$((index + 1))
+	done <<<"$records"
+	echo "请输入玩家序号，不输返回："
+	read -r selected
+	[[ "$selected" =~ ^[0-9]+$ ]] || return 0
+	selected_record=$(printf '%s\n' "$records" | sed -n "${selected}p")
+	if [ -z "$selected_record" ]; then
+		echo "玩家序号无效。"
+		return 0
+	fi
+	IFS=$'\t' read -r userid name prefab <<<"$selected_record"
+	echo "已选择：$name ($userid)"
+	echo "[1]踢出 [2]Ban [3]解除Ban [4]加入管理员 [5]移除管理员 [6]取消"
+	read -r action
+	case "$action" in
+		1) kick_player "$userid" ;;
+		2) ban_player "$target_cluster" "$userid" ;;
+		3) unban_player "$target_cluster" "$userid" ;;
+		4) grant_player_admin "$target_cluster" "$userid" ;;
+		5) revoke_player_admin "$target_cluster" "$userid" ;;
+		*) return 0 ;;
+	esac
 }
 
 # 重启服务器
@@ -2798,12 +3231,14 @@ auto_update() {
 			fi
 		fi
 	}
-	timecheck=0
+		timecheck=0
 	maintenance_interval=750
 	last_game_check=0
 	last_mod_check=0
 	game_check_interval_seconds=600
 	mod_check_interval_seconds=60
+	# 自动更新进程启动时把已有玩家快照汇总成统计基线；后续由 get_playerList 增量更新。
+	script -rebuild_player_stats
 	# 保持运行
 	while :
 			do
@@ -2974,6 +3409,7 @@ get_playerList() {
 				echo "$nowtime"
 				echo "$list"
 			} >>"$script_files_path"/playerlist.txt
+			update_player_statistics_from_list "$list" "$cluster_name" "$(date +%s)" || true
 			return 1
 		else
 			echo -e "\e[92m服务器玩家列表:\e[0m"
@@ -3490,6 +3926,8 @@ if [ "$1" == "-checkprocess" ]; then
 	checkprocess "$2"
 elif [ "$1" == "-get_playerList" ]; then
 	get_playerList "$2"
+elif [ "$1" == "-rebuild_player_stats" ]; then
+	rebuild_player_statistics "$2"
 elif [ "$1" == "-checkupdate" ]; then
 	checkupdate "$2"
 elif [ "$1" == "-checkmodupdate" ]; then

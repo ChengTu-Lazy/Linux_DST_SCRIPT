@@ -597,7 +597,129 @@ test_generated_backup_path() (
 	assert_contains "$generated" 'mod_check_interval_seconds=60' "自动维护脚本每分钟检查Mod"
 	assert_contains "$generated" 'last_mod_check' "Mod检查使用独立计时器"
 	assert_contains "$generated" 'game_check_interval_seconds=600' "自动维护脚本每十分钟检查游戏本体"
+	assert_contains "$generated" 'script -rebuild_player_stats' "自动更新启动时重建历史玩家统计"
 	assert_contains "$script_under_test" 'auto_update_anyway = true' "保留有人在线时允许强制更新的默认配置"
+)
+
+test_player_history_permissions() (
+	local sandbox="$test_root/player-management"
+	local save_root="$sandbox/saves"
+	local cluster_root="$save_root/fixture"
+	local scripts="$cluster_root/ScriptFiles"
+	local archive_source="$sandbox/archive-source"
+	local records_output="$sandbox/records.log"
+	export HOME="$sandbox/home"
+	DST_SAVE_PATH="$save_root"
+	mkdir -p "$scripts/Player" "$archive_source" "$HOME"
+	echo 'version = 正式版32位' >"$scripts/config.txt"
+	cat >"$archive_source/playerlist.txt" <<'EOF'
+-----------------------------------------------------
+2026-08-06 10:00:00
+[1] KU_history Old Name willow
+EOF
+	(
+		cd "$archive_source" || exit 1
+		zip -q "$scripts/Player/history.zip" playerlist.txt
+	)
+	cat >"$scripts/playerlist.txt" <<'EOF'
+-----------------------------------------------------
+2026-08-06 10:10:00
+[1] KU_history New Name wendy
+[2] KU_current Current Player wx78
+EOF
+
+	get_historical_player_records fixture >"$records_output"
+	assert_contains "$records_output" $'KU_history\tNew Name\twendy' "当前玩家记录覆盖历史昵称和角色"
+	assert_contains "$records_output" $'KU_current\tCurrent Player\twx78' "历史玩家列表合并当前玩家"
+
+	send_player_console_command() { return 1; }
+	if grant_player_admin fixture KU_history >/dev/null; then
+		assert_contains "$cluster_root/adminlist.txt" 'KU_history' "玩家可加入管理员名单"
+	else
+		fail "玩家可加入管理员名单"
+	fi
+	if ban_player fixture KU_history >/dev/null; then
+		assert_contains "$cluster_root/blocklist.txt" 'KU_history' "历史玩家可写入黑名单"
+	else
+		fail "历史玩家可写入黑名单"
+	fi
+	if unban_player fixture KU_history >/dev/null; then
+		if grep -Fq -- 'KU_history' "$cluster_root/blocklist.txt"; then
+			fail "玩家可从黑名单移除"
+		else
+			pass "玩家可从黑名单移除"
+		fi
+	else
+		fail "玩家可从黑名单移除"
+	fi
+	if revoke_player_admin fixture KU_history >/dev/null; then
+		if grep -Fq -- 'KU_history' "$cluster_root/adminlist.txt"; then
+			fail "玩家可从管理员名单移除"
+		else
+			pass "玩家可从管理员名单移除"
+		fi
+	else
+		fail "玩家可从管理员名单移除"
+	fi
+	local sent_command
+	send_player_console_command() { sent_command=$1; return 0; }
+	ban_player fixture KU_history >/dev/null
+	if [ "$sent_command" = 'TheNet:Ban("KU_history")' ]; then
+		pass "在线Ban使用DST控制台命令"
+	else
+		fail "在线Ban使用DST控制台命令"
+	fi
+	unban_player fixture KU_history >/dev/null
+	if [ "$sent_command" = 'TheNet:Unban("KU_history")' ]; then
+		pass "在线解除Ban使用DST控制台命令"
+	else
+		fail "在线解除Ban使用DST控制台命令"
+	fi
+)
+
+test_player_statistics() (
+	local sandbox="$test_root/player-statistics"
+	local save_root="$sandbox/saves"
+	local scripts="$save_root/fixture/ScriptFiles"
+	local stats_file="$scripts/player_statistics.txt"
+	local base_epoch
+	local stats_line
+	DST_SAVE_PATH="$save_root"
+	mkdir -p "$scripts"
+	echo 'version = 正式版32位' >"$scripts/config.txt"
+	cat >"$scripts/playerlist.txt" <<'EOF'
+-----------------------------------------------------
+2026-08-06 10:00:00
+[1] KU_stats Stats Player willow
+-----------------------------------------------------
+2026-08-06 10:00:10
+[1] KU_stats Stats Player wendy
+EOF
+
+	if rebuild_player_statistics fixture; then
+		stats_line=$(grep -F -- 'KU_stats' "$stats_file")
+		if [ "$(printf '%s\n' "$stats_line" | awk -F '\t' '{print $6}')" = 2 ] && [ "$(printf '%s\n' "$stats_line" | awk -F '\t' '{print $7}')" = 10 ]; then
+			pass "历史快照重建玩家采样和游玩时长"
+		else
+			fail "历史快照重建玩家采样和游玩时长"
+			echo "  实际统计: $stats_line"
+		fi
+	else
+		fail "历史快照重建玩家采样和游玩时长"
+	fi
+
+	base_epoch=$(date -d '2026-08-06 10:00:00' +%s)
+	update_player_statistics_from_list '[1] KU_stats Stats Player wx78' fixture "$((base_epoch + 20))"
+	stats_line=$(grep -F -- 'KU_stats' "$stats_file")
+	if [ "$(printf '%s\n' "$stats_line" | awk -F '\t' '{print $6}')" = 3 ] && [ "$(printf '%s\n' "$stats_line" | awk -F '\t' '{print $7}')" = 20 ]; then
+		pass "在线快照增量更新玩家游玩统计"
+	else
+		fail "在线快照增量更新玩家游玩统计"
+		echo "  实际统计: $stats_line"
+	fi
+	show_player_statistics fixture >"$sandbox/output.log"
+	assert_contains "$sandbox/output.log" $'玩家名\tUserID\t最近角色' "历史统计表头输出真实制表符"
+	assert_not_contains "$sandbox/output.log" '\\tUserID' "历史统计表头不输出字面量反斜杠"
 )
 
 test_update_game_result_validation() (
@@ -855,6 +977,8 @@ test_download_retry_boundary_and_propagation
 test_shutdown_log_safety
 test_close_server_propagates_failure
 test_generated_backup_path
+test_player_history_permissions
+test_player_statistics
 test_update_game_result_validation
 test_remote_game_version
 test_game_update_precheck
