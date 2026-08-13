@@ -12,7 +12,7 @@ DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="$HOME/DST_BETA"
 #脚本版本
-script_version="1.8.22"
+script_version="1.8.23"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
@@ -1202,6 +1202,9 @@ start_server_select() {
 	run_shared+=(-console)
 	run_shared+=(-cluster $cluster_name)
 	run_shared+=(-ugc_directory \"$workshop_path/\")
+	# Mod 已在启动分片前由 SteamCMD 串行更新并校验。Master/Caves 如果同时
+	# 更新同一个 UGC 目录，可能互相覆盖正在提交的大型 Mod 文件。
+	run_shared+=(-skip_update_server_mods)
 	run_shared+=(-monitor_parent_process \$\$)
 	\"\${run_shared[@]}\" -shard $shard_name" >"$script_files_path"/"$script_start_server"
 	grep --text -m 1 buildid "$gamesPath"/steamapps/appmanifest_343050.acf | sed 's/[^0-9]//g' >"$script_files_path"/"cluster_game_buildid.txt"
@@ -1309,6 +1312,7 @@ start_server_check_select() {
 	local delta=""
 	local fatal_seen=0
 	local ready_seen=0
+	local workshop_timeout_seen=0
 	# 只检查本次 start_server_select 之后新增的日志。
 	while :; do
 		current_time=$(date +%s)
@@ -1354,11 +1358,15 @@ start_server_check_select() {
 			return 0
 		fi
 		if printf '%s\n' "$delta" | grep --text -Fq "DownloadServerMods timed out with no response from Workshop..."; then
-			echo -e "\r\e[31m连接创意工坊超时导致$w_flag服务器 Mod 下载失败，将进行有限重试。\e[0m"
-			if startup_restart_cluster_limited "Workshop 下载超时" "$auto_flag" -AUTO; then
-				return 1
+			# DST 会在这个提示后继续加载本地 Mod；它本身并不是启动失败标志。
+			# 旧逻辑立即重启会打断仍在正常加载的世界。
+			if [ "$workshop_timeout_seen" -eq 0 ]; then
+				echo -e "\r\e[1;33m$w_flag服务器的 Workshop 在线更新等待超时，将继续使用启动前已校验的本地 Mod。\e[0m"
+				log_with_timestamp "$w_flag服务器出现 Workshop 在线更新超时提示；继续等待实际启动结果。"
+				workshop_timeout_seen=1
 			fi
-			return 0
+			mod_flag=0
+			download_flag=0
 		fi
 		if printf '%s\n' "$delta" | grep --text -Fq "Failed to send shard broadcast message"; then
 			echo -e "\r\e[1;33m$w_flag分片广播失败，可能是临时网络问题，将进行有限重试。\e[0m"
@@ -1539,48 +1547,56 @@ start_server_check_fix() {
 # 通过steamcmd下载mod
 download_mod_by_steamcmd() {
 	local V2_mods=("$@")
+	local -a workshop_commands=(+login anonymous)
+	local log_file
+	local steamcmd_status=0
+	local verify_failed=0
+	local mod_id
 	# mod所在目录
 	get_cluster_main "$cluster_name"
 	get_dedicated_server_mods_setup "$cluster_name"
 	modoverrides_path=$cluster_main/modoverrides.lua
 
-	if [ -e "$modoverrides_path" ]; then
-		# 删除appworkshop_322330.acf
-		remove_workshop_appmanifest
-		# 收集所有项目ID到字符串中
-		workshop_commands="+login anonymous "
-		# 统一用steamcmd下载V2_mods
-		if [ ${#V2_mods[@]} -gt 0 ]; then
-			for mod_id in "${V2_mods[@]}"; do
-				# 如果mod_id是空的，不操作
-				if [ -z "$mod_id" ]; then
-					continue
-				fi
-
-				# 如果文件夹不存在，追加到命令字符串中
-				if ! workshop_mod_exists "$mod_id"; then
-					# 如果文件夹存在，追加到命令字符串中
-					workshop_commands+="+workshop_download_item 322330 $mod_id "
-				else
-					echo $mod_id mod已存在
-				fi
-			done
-		fi
-		workshop_commands+="+quit"
-		# 检查是否只有初始命令和结束命令
-		if [ "$workshop_commands" == "+login anonymous +quit" ]; then
-			echo "没有需要下载的V2 Mod项目"
-		else
-			# 定义日志文件路径
-			mkdir -p "$HOME/Steam/logs"
-			log_file="$HOME/Steam/logs/stderr.txt"
-
-			# 执行命令并将输出写入日志文件和终端
-			run_steamcmd $workshop_commands 2>&1 | tee "$log_file"
-		fi
-	else
+	if [ ! -e "$modoverrides_path" ]; then
 		echo -e "\e[1;31m未找到mod配置文件 \e[0m"
+		return 1
 	fi
+	if [ ${#V2_mods[@]} -eq 0 ]; then
+		echo "没有需要下载或校验的V2 Mod项目"
+		return 0
+	fi
+
+	# 保留 appworkshop_322330.acf；清单被删除后，DST 会把所有 V2 Mod 都视为
+	# 待更新。所有项目在一个 SteamCMD 进程中串行 validate，避免分片并发写入。
+	for mod_id in "${V2_mods[@]}"; do
+		[ -n "$mod_id" ] || continue
+		if ! [[ "$mod_id" =~ ^[0-9]+$ ]]; then
+			echo -e "\e[1;31m无效的 Workshop Mod ID: $mod_id\e[0m"
+			return 1
+		fi
+		workshop_commands+=(+workshop_download_item 322330 "$mod_id" validate)
+	done
+	workshop_commands+=(+quit)
+
+	mkdir -p "$HOME/Steam/logs"
+	# SteamCMD 自己会写 stderr.txt；使用独立文件，避免 tee 与 SteamCMD 同时写同一日志。
+	log_file="$HOME/Steam/logs/dst_workshop_download.log"
+	run_steamcmd "${workshop_commands[@]}" 2>&1 | tee "$log_file"
+	steamcmd_status=${PIPESTATUS[0]}
+	if [ "$steamcmd_status" -ne 0 ]; then
+		echo -e "\e[1;31mSteamCMD 进程执行失败，退出码: $steamcmd_status\e[0m"
+		return 1
+	fi
+
+	# SteamCMD 某些下载错误仍会返回 0，所以还要逐项确认成功标志。
+	for mod_id in "${V2_mods[@]}"; do
+		[ -n "$mod_id" ] || continue
+		if ! grep --text -Eq "Success\\. Downloaded item ${mod_id}([[:space:]]|$)" "$log_file"; then
+			echo -e "\e[1;31mSteamCMD 未确认 Mod $mod_id 下载/校验成功。\e[0m"
+			verify_failed=1
+		fi
+	done
+	return "$verify_failed"
 }
 
 #自动添加存档所需的mod
@@ -1629,24 +1645,26 @@ addmod_by_http_or_steamcmd() {
 		touch "$dedicated_server_mods_setup"
 		V2_mods=()
 		while IFS= read -r mod_num; do
-			get_mod_info "$mod_num"
-			mod_file_url=${mod_info_post[2]}
-			if [ -z "$mod_file_url" ] || [ "$mod_file_url" == "null" ]; then
-				if ! workshop_mod_exists "$mod_num"; then
-					echo "${mod_info_post[0]} [${mod_info_post[1]}] 是V2 Mod 后续将使用steamcmd下载"
-					V2_mods+=("$mod_num")
-				else
-					echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V2 已存在\e[0m"
-				fi
+			[ -n "$mod_num" ] || continue
+			# UGC 目录中的项目由 SteamCMD 管理。即使 modmain.lua 存在，启动前
+			# 仍要 validate；仅检查一个入口文件无法发现资源包缺失。
+			if workshop_mod_exists "$mod_num"; then
+				echo -e "\e[92mMod $mod_num-V2 已存在，将由 SteamCMD 更新并校验\e[0m"
+				V2_mods+=("$mod_num")
+			elif [ -f "$HOME/DST/mods/workshop-$mod_num/modmain.lua" ]; then
+				echo -e "\e[92mMod $mod_num-V1 已存在\e[0m"
 			else
-				# 如果文件夹不存在，追加到命令字符串中
-				if [ ! -f "$HOME/DST/mods/workshop-$mod_num/modmain.lua" ]; then
+				# 仅对本地不存在的新项目查询 API，以区分旧式直链 Mod 与 V2 Mod。
+				get_mod_info "$mod_num"
+				mod_file_url=${mod_info_post[2]}
+				if [ -n "$mod_file_url" ] && [ "$mod_file_url" != "null" ]; then
 					if ! download_mod_by_http "$mod_file_url" "$mod_num"; then
 						log_with_timestamp "Mod $mod_num HTTP 下载失败。"
 						download_failed=1
 					fi
 				else
-					echo -e "\e[92m${mod_info_post[0]} [${mod_info_post[1]}]-V1 已存在\e[0m"
+					echo "Mod $mod_num 是V2项目，后续将使用 SteamCMD 下载并校验"
+					V2_mods+=("$mod_num")
 				fi
 			fi
 		done < <(grep --text "\"workshop" <"$modoverrides_path" | cut -d '"' -f 2 | cut -d '-' -f 2)
@@ -1701,8 +1719,10 @@ download_ensure_all_success() {
 		STEAMCMD_TIMEOUT_SECONDS=$remaining_seconds
 		log_with_timestamp "\n🎯 第 $try_count/$max_attempts 次尝试下载以下Mod：${mods_to_download[*]}"
 
-		# 调用steamcmd进行下载
-		if ! download_mod_by_steamcmd "${mods_to_download[@]}"; then
+		# 在单个 SteamCMD 进程中串行更新/校验全部项目，避免分片并发写 Workshop。
+		local steamcmd_status=0
+		download_mod_by_steamcmd "${mods_to_download[@]}" || steamcmd_status=$?
+		if [ "$steamcmd_status" -ne 0 ]; then
 			log_with_timestamp "\e[33m本次 SteamCMD 调用返回失败，将根据文件校验结果决定是否重试。\e[0m"
 		fi
 		sleep 1
@@ -1710,12 +1730,12 @@ download_ensure_all_success() {
 		# 检查哪些仍未下载成功
 		local failed_mods=()
 		for mod_num in "${mods_to_download[@]}"; do
-			mod_path=$(find_workshop_modmain "$mod_num")
-			if [ -z "$mod_path" ]; then
-				log_with_timestamp "\e[33m[仍未成功] Mod $mod_num 未找到modmain.lua\e[0m"
+			mod_path=$(workshop_mod_existing_dir "$mod_num" 2>/dev/null || true)
+			if [ "$steamcmd_status" -ne 0 ] || ! workshop_mod_required_files_ok "$mod_path"; then
+				log_with_timestamp "\e[33m[仍未成功] Mod $mod_num 下载/校验未得到完整确认\e[0m"
 				failed_mods+=("$mod_num")
 			else
-				log_with_timestamp "\e[92m[成功] Mod $mod_num 下载完成\e[0m"
+				log_with_timestamp "\e[92m[成功] Mod $mod_num 下载并校验完成\e[0m"
 			fi
 		done
 

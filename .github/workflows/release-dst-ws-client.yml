@@ -40,15 +40,20 @@ jobs:
             DST_SCRIPT.sh
             config.example.json
           body: |
-            本版本重点强化 DST 服务端启动诊断、Mod 修复、自动维护备份及游戏版本更新判定。
+            本版本重点修复 DST Workshop Mod 启动前校验和启动超时误重启问题。
 
             ### 启动与 Mod 修复
 
             - 启动检查改为基于本次新增日志判断 ready、fatal 与终止状态，避免历史日志导致误判。
             - 对能够明确归属的 Workshop Mod 故障执行事务式修复；替换失败时恢复旧文件，归属不明确时保留现场。
             - 为 SteamCMD Mod 下载增加最大尝试次数和总时长边界，并将失败状态传播给启动流程。
+            - 所有 V2 Workshop Mod 在启动前由单个 SteamCMD 进程串行下载并执行 `validate`，避免 Master/Caves 并发写入同一 UGC 目录。
+            - 保留 `appworkshop_322330.acf`，并逐项检查 SteamCMD 的 `Success. Downloaded item <id>` 成功标志及 Mod 必需文件。
+            - 已存在的 V1 Mod 不再被误判为需要 SteamCMD 下载的 V2 Mod。
             - 精确识别 DST 进程与 `screen` 会话，避免重复启动或误关闭名称相近的会话。
             - 关闭分片时校验本次保存和关闭日志，失败时停止后续重启并保留现场。
+            - `DownloadServerMods timed out with no response from Workshop...` 继续使用启动前已校验的本地 Mod，不再立即重启仍在加载的世界。
+            - 启动分片增加 `-skip_update_server_mods`，避免 DST 启动阶段再次并发更新 Workshop Mod。
 
             ### 自动维护与备份
 
@@ -81,5 +86,5 @@ jobs:
             ### 发布内容
 
             - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.22`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.23`。
           fail_on_unmatched_files: true

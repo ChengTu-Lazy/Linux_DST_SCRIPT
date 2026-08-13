@@ -88,8 +88,8 @@ dst-ws-client-linux-amd64
 发布命令：
 
 ```bash
-git tag v1.8.22
-git push origin v1.8.22
+git tag v1.8.23
+git push origin v1.8.23
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。
