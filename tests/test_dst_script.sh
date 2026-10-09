@@ -923,6 +923,236 @@ test_game_update_precheck() (
 	assert_contains "$calls" 'update:BETA' "测试版远端版本高于本地后执行更新"
 )
 
+test_beta_steamcmd_args_and_install_check() (
+	local sandbox="$test_root/beta-steamcmd"
+	local calls="$sandbox/calls.log"
+	mkdir -p "$sandbox/beta/steamapps" "$sandbox/beta/bin64" "$sandbox/beta/bin"
+	: >"$calls"
+	export TMPDIR="$sandbox"
+	DST_BETA_PATH="$sandbox/beta"
+
+	run_steamcmd() {
+		printf '%s\n' "$*" >>"$calls"
+		printf "Success! App '343050' fully installed.\n"
+		return 0
+	}
+
+	printf '755194\n' >"$sandbox/beta/version.txt"
+	printf '"buildid" "25540104"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+	: >"$sandbox/beta/bin64/dontstarve_dedicated_server_nullrenderer_x64"
+	chmod +x "$sandbox/beta/bin64/dontstarve_dedicated_server_nullrenderer_x64"
+
+	if download_game_body BETA >"$sandbox/beta-update.log" 2>&1; then
+		pass "测试版本体下载按成功标志通过"
+	else
+		fail "测试版本体下载按成功标志通过"
+	fi
+	assert_contains "$calls" "-beta updatebeta" "测试版下载使用分支名 updatebeta"
+	assert_not_contains "$calls" "returnofthembeta" "测试版下载不再把分支密码当分支名"
+
+	: >"$calls"
+	DST_SCRIPT_BETA_PASSWORD="s3cret"
+	download_game_body BETA >"$sandbox/beta-password.log" 2>&1 || true
+	assert_contains "$calls" "-betapassword s3cret" "配置分支密码时额外传递 -betapassword"
+	DST_SCRIPT_BETA_PASSWORD=""
+
+	if dst_install_complete "$sandbox/beta"; then
+		pass "版本号、清单与主程序齐全时视为安装完整"
+	else
+		fail "版本号、清单与主程序齐全时视为安装完整"
+	fi
+
+	rm -f "$sandbox/beta/bin64/dontstarve_dedicated_server_nullrenderer_x64"
+	if dst_install_complete "$sandbox/beta"; then
+		fail "缺少服务端主程序时视为安装不完整"
+	else
+		pass "缺少服务端主程序时视为安装不完整"
+	fi
+
+	: >"$sandbox/beta/bin/dontstarve_dedicated_server_nullrenderer"
+	chmod +x "$sandbox/beta/bin/dontstarve_dedicated_server_nullrenderer"
+	if dst_install_complete "$sandbox/beta"; then
+		pass "仅存在32位主程序时仍视为安装完整"
+	else
+		fail "仅存在32位主程序时仍视为安装完整"
+	fi
+
+	printf '\n' >"$sandbox/beta/version.txt"
+	if dst_install_complete "$sandbox/beta"; then
+		pass "version.txt只有空白字符时仍视为安装完整"
+	else
+		fail "version.txt只有空白字符时仍视为安装完整"
+	fi
+
+	: >"$sandbox/beta/version.txt"
+	if dst_install_complete "$sandbox/beta"; then
+		fail "version.txt为空时视为安装不完整"
+	else
+		pass "version.txt为空时视为安装不完整"
+	fi
+
+	printf '"buildid" "25540104"\n\t\t"BetaKey"\t\t"updatebeta"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+	# 前面的断言把 version.txt 清空了，这里恢复成"已装好测试版"的现场。
+	printf '755194\n' >"$sandbox/beta/version.txt"
+	printf '"buildid" "25540104"\n\t\t"BetaKey"\t\t"updatebeta"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+
+	if dst_beta_body_ready "$sandbox/beta"; then
+		pass "清单标记测试分支且本体完整时视为已装好测试版"
+	else
+		fail "清单标记测试分支且本体完整时视为已装好测试版"
+	fi
+
+	printf '"buildid" "24080846"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+	if dst_beta_body_ready "$sandbox/beta"; then
+		fail "正式版清单不会被误判为测试版本体"
+	else
+		pass "正式版清单不会被误判为测试版本体"
+	fi
+
+	printf '"buildid" "25540104"\n\t\t"BetaKey"\t\t"updatebeta"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+	printf '740477\n' >"$sandbox/beta/version.txt"
+	if dst_beta_body_ready "$sandbox/beta"; then
+		pass "版本号落后但分支正确时不重复下载，交给自动更新处理"
+	else
+		fail "版本号落后但分支正确时不重复下载，交给自动更新处理"
+	fi
+
+	# 目录里是完整正式版本体：应触发一次测试版重新下载，而不是直接跳过。
+	run_steamcmd() {
+		printf '%s\n' "$*" >>"$calls"
+		printf '%s\n' "$*"
+		return 1
+	}
+	printf '"buildid" "24080846"\n' >"$sandbox/beta/steamapps/appmanifest_343050.acf"
+	echo 4 | change_game_version fixture >"$sandbox/ensure-only.log" 2>&1
+	assert_contains "$sandbox/ensure-only.log" "测试版游戏本体下载失败" "本体不完整时切换版本执行下载并给出失败原因"
+	assert_contains "$sandbox/ensure-only.log" "-beta updatebeta" "本体不完整时的下载命令使用测试分支名"
+	assert_contains "$sandbox/ensure-only.log" "当前不是测试版本体" "正式版本体在位时提示需要重新下载测试版"
+)
+
+test_beta_version_switch_requires_install() (
+	local sandbox="$test_root/beta-switch"
+	local calls="$sandbox/calls.log"
+	local config="$sandbox/scripts/config.txt"
+	mkdir -p "$sandbox/scripts" "$sandbox/beta"
+	printf 'version = 正式版32位\nauto_update_anyway = true\n' >"$config"
+	: >"$calls"
+	export TMPDIR="$sandbox"
+	DST_BETA_PATH="$sandbox/beta"
+	script_files_path="$sandbox/scripts"
+
+	run_steamcmd() {
+		printf '%s\n' "$*" >>"$calls"
+		printf '%s\n' "$*"
+		return 1
+	}
+	log_with_timestamp() { :; }
+	get_remote_game_version() {
+		printf '%s\n' 755194
+	}
+
+	if echo 4 | change_game_version fixture >"$sandbox/switch-fail.log" 2>&1; then
+		fail "测试版本体下载失败时切换版本失败"
+	else
+		pass "测试版本体下载失败时切换版本失败"
+	fi
+	assert_contains "$config" "version = 正式版32位" "测试版下载失败时保留原正式版配置"
+	assert_contains "$sandbox/switch-fail.log" "-beta updatebeta" "失败路径同样使用正确的测试分支"
+
+	run_steamcmd() {
+		printf '%s\n' "$*" >>"$calls"
+		printf "Success! App '343050' fully installed.\n"
+		mkdir -p "$DST_BETA_PATH/steamapps" "$DST_BETA_PATH/bin64"
+		printf '755194\n' >"$DST_BETA_PATH/version.txt"
+		printf '"buildid" "25540104"\n\t\t"BetaKey"\t\t"updatebeta"\n' >"$DST_BETA_PATH/steamapps/appmanifest_343050.acf"
+		: >"$DST_BETA_PATH/bin64/dontstarve_dedicated_server_nullrenderer_x64"
+		chmod +x "$DST_BETA_PATH/bin64/dontstarve_dedicated_server_nullrenderer_x64"
+		return 0
+	}
+
+	if echo 4 | change_game_version fixture >"$sandbox/switch-ok.log" 2>&1; then
+		pass "测试版本体下载成功后切换版本成功"
+	else
+		fail "测试版本体下载成功后切换版本成功"
+	fi
+	assert_contains "$config" "version = 测试版64位" "测试版本体下载成功后写入测试版配置"
+)
+
+test_missing_beta_body_blocks_start() (
+	local sandbox="$test_root/beta-missing-body"
+	mkdir -p "$sandbox/saves" "$sandbox/beta-saves/fixture/Master" \
+		"$sandbox/beta-saves/fixture/ScriptFiles" "$sandbox/beta"
+	printf 'version = 测试版64位\n' >"$sandbox/beta-saves/fixture/ScriptFiles/config.txt"
+	: >"$sandbox/beta-saves/fixture/Master/server_log.txt"
+	DST_SAVE_PATH="$sandbox/saves"
+	DST_BETA_SAVE_PATH="$sandbox/beta-saves"
+	DST_BETA_PATH="$sandbox/beta"
+	DST_DEFAULT_PATH="$sandbox/official"
+
+	if start_server_select fixture "DST_Master_beta fixture" "start_server_master.sh" \
+		>"$sandbox/blocked.log" 2>&1; then
+		fail "测试版本体缺失时阻止启动分片"
+	else
+		pass "测试版本体缺失时阻止启动分片"
+	fi
+	assert_contains "$sandbox/blocked.log" "测试版本体不存在或不完整" "测试版本体缺失时给出明确提示"
+	if compgen -G "$sandbox/beta-saves/fixture/ScriptFiles/start_server_master.sh" >/dev/null; then
+		fail "测试版本体缺失时不生成启动脚本"
+	else
+		pass "测试版本体缺失时不生成启动脚本"
+	fi
+)
+
+test_beta_save_path_resolution() (
+	local sandbox="$test_root/beta-save-path"
+	mkdir -p "$sandbox/saves/stable_only/ScriptFiles" "$sandbox/saves/beta_cluster/ScriptFiles" \
+		"$sandbox/saves/beta_cluster/Master" "$sandbox/beta-saves/beta_cluster/ScriptFiles" \
+		"$sandbox/beta-saves/beta_cluster/Master" "$sandbox/beta-saves/beta_cluster/Caves"
+	printf 'version = 正式版64位\n' >"$sandbox/saves/stable_only/ScriptFiles/config.txt"
+	printf 'version = 正式版64位\n' >"$sandbox/saves/beta_cluster/ScriptFiles/config.txt"
+	printf 'version = 测试版64位\nauto_update_anyway = true\n' >"$sandbox/beta-saves/beta_cluster/ScriptFiles/config.txt"
+	echo token >"$sandbox/saves/beta_cluster/cluster_token.txt"
+
+	DST_SAVE_PATH="$sandbox/saves"
+	DST_BETA_SAVE_PATH="$sandbox/beta-saves"
+
+	get_path_cluster stable_only
+	if [ "$cluster_path" == "$sandbox/saves/stable_only" ]; then
+		pass "正式版存档解析到正式版存档目录"
+	else
+		fail "正式版存档解析到正式版存档目录"
+	fi
+
+	# 正式版目录里还留着旧的“正式版”配置，但测试版目录已是测试版配置：应以测试版为准。
+	get_path_cluster beta_cluster
+	if [ "$cluster_path" == "$sandbox/beta-saves/beta_cluster" ]; then
+		pass "切换到测试版的存档解析到测试版存档目录"
+	else
+		fail "切换到测试版的存档解析到测试版存档目录"
+		echo "  实际路径: $cluster_path"
+	fi
+
+	# 从正式版切测试版时，应把世界和 token 复制到测试版存档目录
+	rm -rf "$sandbox/beta-saves/beta_cluster"
+	migrate_cluster_to_beta_save beta_cluster
+	if [ -f "$sandbox/beta-saves/beta_cluster/cluster_token.txt" ] &&
+		[ -d "$sandbox/beta-saves/beta_cluster/Master" ]; then
+		pass "切换测试版时复制正式版存档与token"
+	else
+		fail "切换测试版时复制正式版存档与token"
+		command ls -la "$sandbox/beta-saves/beta_cluster" >&2
+	fi
+
+	# 已经在测试版目录里的存档不会被再次覆盖
+	printf 'modified\n' >"$sandbox/beta-saves/beta_cluster/ScriptFiles/config.txt"
+	migrate_cluster_to_beta_save beta_cluster
+	if [ "$(cat "$sandbox/beta-saves/beta_cluster/ScriptFiles/config.txt")" == "modified" ]; then
+		pass "测试版目录已存在时不重复覆盖"
+	else
+		fail "测试版目录已存在时不重复覆盖"
+	fi
+)
+
 test_self_update_validation() (
 	local sandbox="$test_root/self-update"
 	export HOME="$sandbox/home"
@@ -982,6 +1212,10 @@ test_player_statistics
 test_update_game_result_validation
 test_remote_game_version
 test_game_update_precheck
+test_beta_steamcmd_args_and_install_check
+test_beta_version_switch_requires_install
+test_missing_beta_body_blocks_start
+test_beta_save_path_resolution
 test_self_update_validation
 
 passed=$(grep -c '^PASS$' "$result_file" || true)

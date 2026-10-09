@@ -2,17 +2,23 @@
 
 ##常量区域
 
-#测试版token
-BETA_TOKEN="returnofthembeta"
+# 测试版Steam分支名。SteamCMD 的 -beta 参数接收的是“分支名”，
+# 官方测试分支名为 updatebeta；returnofthembeta 只是历史遗留的分支密码，
+# 直接把它当作分支名传给 -beta 会得到 "Failed to set beta" 而无法下载。
+DST_SCRIPT_BETA_BRANCH="${DST_SCRIPT_BETA_BRANCH:-updatebeta}"
+# 分支密码（公开测试分支通常不需要）。仅在确有密码时才会传出 -betapassword。
+DST_SCRIPT_BETA_PASSWORD="${DST_SCRIPT_BETA_PASSWORD:-}"
 # 作者提供的Token
 GAME_TOKEN="pds-g^KU_iC59_53i^mrG/fM8RM3RctBmgouiK4lITydtUUbIHN30ze43MnBk="
-# 饥荒存档位置
+# 饥荒存档位置。测试版服务端（Linux）使用独立根目录 DoNotStarveTogetherBetaBranch，
+# 与正式版存档互不干扰；具体用哪个由 get_path_cluster 按存档配置决定。
 DST_SAVE_PATH="$HOME/.klei/DoNotStarveTogether"
+DST_BETA_SAVE_PATH="${DST_SCRIPT_BETA_SAVE_PATH:-$HOME/.klei/DoNotStarveTogetherBetaBranch}"
 # 默认游戏路径
 DST_DEFAULT_PATH="$HOME/DST"
-DST_BETA_PATH="$HOME/DST_BETA"
+DST_BETA_PATH="${DST_SCRIPT_BETA_PATH:-$HOME/DST_BETA}"
 #脚本版本
-script_version="1.8.23"
+script_version="1.8.24"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
@@ -145,6 +151,29 @@ run_steamcmd() {
 		timeout_command=(timeout --signal=TERM --kill-after=30s "$timeout_seconds")
 	fi
 
+	# SteamCMD 的内容下载会走系统代理环境变量；多数代理线路无法访问 Steam 内容
+	# CDN（*.steamcontent.com），表现为 TLS 握手失败或 "Failed downloading … No connection"。
+	# 这里让 SteamCMD 直连，同时把回环地址加入 no_proxy，
+	# 避免 SteamCMD 自身的 127.0.0.1 内部请求被代理拦掉。
+	# 如需强制走代理，可设置 DST_SCRIPT_STEAMCMD_USE_PROXY=true。
+	if [ "${DST_SCRIPT_STEAMCMD_USE_PROXY:-false}" != "true" ]; then
+		local no_proxy_value="${no_proxy:-}"
+		case ",$no_proxy_value," in
+			*,127.0.0.1,*) ;;
+			*) no_proxy_value="${no_proxy_value:+$no_proxy_value,}127.0.0.1,localhost" ;;
+		esac
+		if [ "$STEAMCMD_BIN" == "$HOME/steamcmd/steamcmd.sh" ]; then
+			(cd "$HOME/steamcmd" && env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+				-u all_proxy -u ALL_PROXY no_proxy="$no_proxy_value" NO_PROXY="$no_proxy_value" \
+				"${timeout_command[@]}" "$STEAMCMD_BIN" "$@")
+		else
+			env -u http_proxy -u https_proxy -u HTTP_PROXY -u HTTPS_PROXY \
+				-u all_proxy -u ALL_PROXY no_proxy="$no_proxy_value" NO_PROXY="$no_proxy_value" \
+				"${timeout_command[@]}" "$STEAMCMD_BIN" "$@"
+		fi
+		return
+	fi
+
 	if [ "$STEAMCMD_BIN" == "$HOME/steamcmd/steamcmd.sh" ]; then
 		(cd "$HOME/steamcmd" && "${timeout_command[@]}" "$STEAMCMD_BIN" "$@")
 	else
@@ -258,10 +287,34 @@ init() {
 	check_flag=0
 }
 
-# 获取存档所在路径
+# 存档是否使用测试版（config.txt 里不是“正式版”即视为测试版）
+# 必须先看测试版目录：从正式版切到测试版时，正式版目录里仍留着旧的
+# “正式版XX位”配置，先看正式版目录会永远判定为正式版，导致路径解析错误。
+cluster_uses_beta_version() {
+	local cluster_name=$1
+	local config_file
+	[ -n "$cluster_name" ] || return 1
+	for config_file in \
+		"${DST_BETA_SAVE_PATH:-}/$cluster_name/ScriptFiles/config.txt" \
+		"${DST_SAVE_PATH:-}/$cluster_name/ScriptFiles/config.txt"; do
+		[[ "$config_file" == /* ]] || continue
+		if [ -f "$config_file" ]; then
+			! grep --text -q "正式版" "$config_file" && return 0
+			return 1
+		fi
+	done
+	return 1
+}
+
+# 获取存档所在路径。测试版服务端只认 DoNotStarveTogetherBetaBranch，
+# 用正式版目录会导致日志、备份、启动检测全部落到错误位置。
 get_path_cluster() {
 	cluster_name=$1
-	cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
+	if cluster_uses_beta_version "$cluster_name"; then
+		cluster_path="${DST_BETA_SAVE_PATH}"/"$cluster_name"
+	else
+		cluster_path="${DST_SAVE_PATH}"/"$cluster_name"
+	fi
 }
 
 # 脚本文件所在路径
@@ -317,12 +370,13 @@ get_cluster_dst_game_version() {
 #确认存档情况
 get_cluster_flag() {
 	cluster_name=$1
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+	get_path_cluster "$cluster_name"
+	if [ -d "${cluster_path}/Master" ]; then
 		cluster_flag=4
 	else
 		cluster_flag=7
 	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+	if [ -d "${cluster_path}/Caves" ]; then
 		cluster_flag=$((cluster_flag - 3))
 	else
 		cluster_flag=$((cluster_flag - 2))
@@ -363,7 +417,8 @@ get_process_name() {
 	process_name_AutoUpdate="AutoUpdate $cluster_name"
 	# 获取游戏版本
 	get_cluster_dst_game_version "$cluster_name"
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
+	get_path_cluster "$cluster_name"
+	if [ -d "${cluster_path}/Caves" ]; then
 		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
 			process_name_caves="DST_Caves $cluster_name"
 			process_name_main="DST_Caves $cluster_name"
@@ -372,7 +427,7 @@ get_process_name() {
 			process_name_main="DST_Caves_beta $cluster_name"
 		fi
 	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
+	if [ -d "${cluster_path}/Master" ]; then
 		if [[ $cluster_dst_game_version == "正式版32位" || $cluster_dst_game_version == "正式版64位" ]]; then
 			process_name_master="DST_Master $cluster_name"
 			process_name_main="DST_Master $cluster_name"
@@ -390,13 +445,14 @@ get_path_server_log() {
 	server_log_path_main=""
 	server_log_path_master=""
 	server_log_path_caves=""
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
-		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
-		server_log_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves/server_log.txt"
+	get_path_cluster "$cluster_name"
+	if [ -d "${cluster_path}/Caves" ]; then
+		server_log_path_main="${cluster_path}/Caves/server_log.txt"
+		server_log_path_caves="${cluster_path}/Caves/server_log.txt"
 	fi
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
-		server_log_path_main="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
-		server_log_path_master="${DST_SAVE_PATH}/$cluster_name/Master/server_log.txt"
+	if [ -d "${cluster_path}/Master" ]; then
+		server_log_path_main="${cluster_path}/Master/server_log.txt"
+		server_log_path_master="${cluster_path}/Master/server_log.txt"
 	fi
 }
 
@@ -458,7 +514,7 @@ repair_config() {
 start_server() {
 	if [ "$cluster_name" == "" ]; then
 		main
-	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+	elif [ -d "$(get_path_cluster "$cluster_name" && printf '%s' "$cluster_path")" ]; then
 
 		if [ "$(screen -ls | grep --text -c "\<$process_name_caves\>")" -gt 0 ]; then
 			echo "该服务器已开启地下服务器,请先关闭再启动！！"
@@ -468,7 +524,8 @@ start_server() {
 			# 判断ScriptFiles文件夹
 			get_path_script_files "$cluster_name"
 			# 判断是否有token文件
-			cd "${DST_SAVE_PATH}/$cluster_name" || exit
+			get_path_cluster "$cluster_name"
+			cd "${cluster_path}" || exit
 			if [ ! -e "cluster_token.txt" ]; then
 				while [ ! -e "cluster_token.txt" ]; do
 					echo "该存档没有token文件,是否自动添加作者的token"
@@ -1178,6 +1235,14 @@ start_server_select() {
 	script_start_server=$3
 	local log_path=""
 	get_path_games "$cluster_name"
+	# 只有确实使用测试版本体时才校验，避免影响测试中用沙箱路径注入的正式版场景。
+	if [ -n "${DST_BETA_PATH:-}" ] && [ "$gamesPath" == "$DST_BETA_PATH" ] &&
+		[ ! -x "$gamesPath/bin64/dontstarve_dedicated_server_nullrenderer_x64" ] &&
+		[ ! -x "$gamesPath/bin/dontstarve_dedicated_server_nullrenderer" ]; then
+		echo -e "\e[1;31m该存档使用测试版，但测试版本体不存在或不完整（$gamesPath）。\e[0m" >&2
+		echo -e "\e[1;33m请先在菜单 [7] 中重新选择测试版以触发下载，或检查网络后重试。\e[0m" >&2
+		return 1
+	fi
 	if [ "$script_start_server" == "start_server_master.sh" ]; then
 		shard_name="Master"
 	else
@@ -2394,19 +2459,57 @@ restart_server() {
 	howtostart "$cluster_name" "$auto_flag" "$check_player"
 }
 
-# 更新游戏
-update_game() {
+# 测试版下载额外参数。SteamCMD 的 -beta 只接受分支名；
+# 旧版脚本把分支密码 returnofthembeta 当成分支名，导致下载必定失败。
+dst_beta_steamcmd_args() {
+	printf '%s\n' "-beta" "$DST_SCRIPT_BETA_BRANCH"
+	if [ -n "$DST_SCRIPT_BETA_PASSWORD" ]; then
+		printf '%s\n' "-betapassword" "$DST_SCRIPT_BETA_PASSWORD"
+	fi
+}
+
+# 游戏本体安装是否完整：版本号文件、SteamCMD 清单和服务端主程序都必须存在。
+dst_install_complete() {
+	local game_path=$1
+	[ -s "$game_path/version.txt" ] || return 1
+	[ -s "$game_path/steamapps/appmanifest_343050.acf" ] || return 1
+	if [ -x "$game_path/bin64/dontstarve_dedicated_server_nullrenderer_x64" ]; then
+		return 0
+	fi
+	[ -x "$game_path/bin/dontstarve_dedicated_server_nullrenderer" ]
+}
+
+# 该目录当前是否已经是配置的测试分支本体：
+# 本体文件完整，且清单带 "BetaKey" "分支名"（只有用 -beta 装过的目录才会有）。
+# 缺少这项判断会把正式版本体误当成测试版，导致永远不触发测试版下载。
+# 这里不比对远端版本号：版本新旧由 checkupdate 负责，
+# 否则官方构建列表滞后时会出现每次开服都重新下载的循环。
+dst_beta_body_ready() {
+	local game_path=$1
+	local manifest_file="$game_path/steamapps/appmanifest_343050.acf"
+	local beta_key=""
+	[ -s "$manifest_file" ] || return 1
+	beta_key=$(grep --text -m 1 '"BetaKey"' "$manifest_file" 2>/dev/null | cut -d '"' -f 4)
+	[ "$beta_key" == "$DST_SCRIPT_BETA_BRANCH" ]
+}
+
+# 下载/更新饥荒游戏本体。DEFAULT 为正式版，其余按测试版分支处理。
+download_game_body() {
 	local version_flag=$1
 	local steamcmd_log
 	local steamcmd_status
+	local -a beta_args=()
+	if [[ ${version_flag} != "DEFAULT" ]]; then
+		mapfile -t beta_args < <(dst_beta_steamcmd_args)
+	fi
 	steamcmd_log=$(mktemp) || return 1
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
 	if [[ ${version_flag} == "DEFAULT" ]]; then
 		echo "同步最新正式版游戏本体内容中。。。"
 		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit 2>&1 | tee "$steamcmd_log"
 	else
-		echo "同步最新测试版版游戏本体内容中。。。"
-		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta "$BETA_TOKEN" validate +quit 2>&1 | tee "$steamcmd_log"
+		echo "同步最新测试版游戏本体内容中（分支 ${DST_SCRIPT_BETA_BRANCH}）。。。"
+		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 "${beta_args[@]}" validate +quit 2>&1 | tee "$steamcmd_log"
 	fi
 	steamcmd_status=${PIPESTATUS[0]}
 
@@ -2418,6 +2521,15 @@ update_game() {
 	if ! grep --text -Fq "Success! App '343050' fully installed." "$steamcmd_log"; then
 		echo -e "\e[1;31mSteamCMD 未返回游戏本体安装成功标志，本次更新按失败处理。\e[0m"
 		grep --text -E 'ERROR!|Error!|FAILED|Failure' "$steamcmd_log" | tail -n 10 || true
+		# "Missing game files" / state 0x42x 一般不是网络问题，而是本地目录不完整
+		# （例如被手工复制或上次下载被中断），必须删除目录重新完整下载才能修复。
+		if grep --text -Eq 'Missing game files|state is 0x42' "$steamcmd_log"; then
+			if [[ ${version_flag} == "DEFAULT" ]]; then
+				echo -e "\e[1;33m提示：$DST_DEFAULT_PATH 文件不完整，删除该目录后重新运行脚本即可完整下载。\e[0m"
+			else
+				echo -e "\e[1;33m提示：$DST_BETA_PATH 文件不完整，删除该目录后重新选择测试版即可完整下载。\e[0m"
+			fi
+		fi
 		rm -f "$steamcmd_log"
 		return 1
 	fi
@@ -2425,6 +2537,83 @@ update_game() {
 	rm -f "$steamcmd_log"
 	return 0
 }
+
+# 更新游戏
+update_game() {
+	download_game_body "$1"
+}
+
+# 把正式版存档迁移到测试版存档目录（只在测试版目录还没有该存档时执行）。
+# 测试版服务端只读取 DoNotStarveTogetherBetaBranch，不迁移就会出现
+# “切到测试版后变成全新空世界、token 也丢失”的情况。正式版原存档保持不动。
+migrate_cluster_to_beta_save() {
+	local cluster_name=$1
+	local stable_dir beta_dir
+	[ -n "$cluster_name" ] || return 0
+	[ -n "${DST_BETA_SAVE_PATH:-}" ] || return 0
+	stable_dir="$DST_SAVE_PATH/$cluster_name"
+	beta_dir="$DST_BETA_SAVE_PATH/$cluster_name"
+	if [ ! -d "$stable_dir" ]; then
+		# 正式版也没有这个存档：只准备测试版目录骨架并保留现有配置。
+		mkdir -p "$beta_dir/Master" "$beta_dir/Caves/ScriptFiles"
+		return 0
+	fi
+	if [ -d "$beta_dir" ]; then
+		return 0
+	fi
+	echo "检测到 $cluster_name 原为正式版存档，正在复制到测试版存档目录 $beta_dir ..."
+	mkdir -p "$beta_dir" || return 1
+	cp -a "$stable_dir/." "$beta_dir/" || return 1
+	# 沿用原存档的版本选项（例如测试版32位/64位），并补齐默认配置项。
+	if [ -f "$stable_dir/ScriptFiles/config.txt" ]; then
+		cp -f "$stable_dir/ScriptFiles/config.txt" "$beta_dir/ScriptFiles/config.txt" || return 1
+	fi
+	{
+		printf '%s\n' "auto_update_anyway = true"
+		printf '%s\n' "is_auto_backup = true"
+		printf '%s\n' "is_debug_mode = false"
+	} >>"$beta_dir/ScriptFiles/config.txt"
+	return 0
+}
+
+# 确保测试版本体可用。以下任一情况都按测试分支重新下载：
+#   1. 本体文件缺失或主程序缺失（例如上次下载被中断）；
+#   2. 目录里其实是正式版本体（清单没有测试分支的 BetaKey）。
+# 已经装好测试版本体时直接返回，不做重复下载；版本是否最新由 checkupdate 负责。
+# 下载失败直接返回失败，由调用方决定是否继续（绝不写入“已是测试版”的配置）。
+ensure_beta_game_body() {
+	local cluster_name=${1:-}
+	mkdir -p "$DST_BETA_PATH" || return 1
+	# 先准备测试版存档目录，保证后续路径解析和开服都落在正确位置。
+	if [ -n "$cluster_name" ]; then
+		migrate_cluster_to_beta_save "$cluster_name"
+	fi
+	if dst_install_complete "$DST_BETA_PATH" && dst_beta_body_ready "$DST_BETA_PATH"; then
+		return 0
+	fi
+	if dst_install_complete "$DST_BETA_PATH"; then
+		echo "检测到 $DST_BETA_PATH 当前不是测试版本体（分支 ${DST_SCRIPT_BETA_BRANCH}），正在重新下载校验。。。"
+	fi
+	echo "正在下载饥荒测试版游戏本体（分支 ${DST_SCRIPT_BETA_BRANCH}）！！！"
+	if ! download_game_body BETA; then
+		echo -e "\e[1;31m测试版游戏本体下载失败，未切换该存档版本。\e[0m"
+		echo -e "\e[1;33m请检查网络或代理后重试：需要能访问 Steam 内容服务器（*.steamcontent.com）。\e[0m"
+		[ -n "$cluster_name" ] && log_with_timestamp "测试版游戏本体下载失败，存档 $cluster_name 保持原游戏版本。"
+		return 1
+	fi
+	if ! dst_install_complete "$DST_BETA_PATH"; then
+		echo -e "\e[1;31mSteamCMD 已退出但测试版本体仍不完整，未切换该存档版本。\e[0m"
+		[ -n "$cluster_name" ] && log_with_timestamp "测试版游戏本体校验不完整，存档 $cluster_name 保持原游戏版本。"
+		return 1
+	fi
+	if ! dst_beta_body_ready "$DST_BETA_PATH"; then
+		echo -e "\e[1;31m下载完成后测试版本体仍未就绪（分支标记或版本号不符），未切换该存档版本。\e[0m"
+		[ -n "$cluster_name" ] && log_with_timestamp "测试版本体分支或版本号校验失败，存档 $cluster_name 保持原游戏版本。"
+		return 1
+	fi
+	return 0
+}
+
 
 get_game_version_value() {
 	local game_path=$1
@@ -2554,7 +2743,7 @@ close_server() {
 	if [ -z "$cluster_name" ]; then
 		main
 		return 1
-	elif [ -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+	elif [ -d "$(get_path_cluster "$cluster_name" && printf '%s' "$cluster_path")" ]; then
 		get_path_server_log "$cluster_name"
 		[ -n "$server_log_path_master" ] && STARTUP_SHARD_BY_LOG["$server_log_path_master"]="Master"
 		[ -n "$server_log_path_caves" ] && STARTUP_SHARD_BY_LOG["$server_log_path_caves"]="Caves"
@@ -3338,20 +3527,26 @@ list_all_mod() {
 	fi
 }
 
-# 显示存档
+# 显示存档（正式版与测试版存档目录都会列出，同名存档以测试版为准）
 get_cluster_name() {
 	if [ ! -d "${DST_SAVE_PATH}" ]; then
-		mkdir "$HOME"/.klei
-		cd "$HOME"/.klei || exit
-		mkdir "${DST_SAVE_PATH}"
+		mkdir -p "$HOME"/.klei
+		mkdir -p "${DST_SAVE_PATH}"
 	fi
 	# 显示搜索结果的 UI
 	echo "===================================="
 	echo "          文件夹搜索结果            "
 	echo "===================================="
-	cd "${DST_SAVE_PATH}" || exit
-	# 列出所有文件夹并为它们编号
-	folders=$(find . -maxdepth 1 ! -path . -type d -printf "%f\n" | cat -n)
+	# 正式版与测试版使用不同的存档根目录，这里合并列出并去重。
+	# 相同名字时按“测试版优先”判定其真实路径，与 cluster_uses_beta_version 一致。
+	folders=$({
+		if [ -d "${DST_BETA_SAVE_PATH:-}" ]; then
+			find "${DST_BETA_SAVE_PATH}" -maxdepth 1 -mindepth 1 -type d -printf "%f\n"
+		fi
+		if [ -d "${DST_SAVE_PATH}" ]; then
+			find "${DST_SAVE_PATH}" -maxdepth 1 -mindepth 1 -type d -printf "%f\n"
+		fi
+	} | awk '!seen[$0]++' | cat -n)
 
 	# 显示带有编号的文件夹列表
 	echo "$folders" | awk '{printf "%-4s%s\n", $1, $2}'
@@ -3367,7 +3562,7 @@ get_cluster_name() {
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
-	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+	elif [ ! -d "$(get_path_cluster "$cluster_name" && printf '%s' "$cluster_path")" ]; then
 		echo "存档不存在！"
 		main
 	else
@@ -3394,7 +3589,7 @@ get_cluster_name_processing() {
 	if [ "$cluster_name" == "" ]; then
 		echo "存档名输入有误！"
 		main
-	elif [ ! -d "${DST_SAVE_PATH}/$cluster_name" ]; then
+	elif [ ! -d "$(get_path_cluster "$cluster_name" && printf '%s' "$cluster_path")" ]; then
 		echo "存档不存在！"
 		main
 	else
@@ -3770,12 +3965,46 @@ prepare() {
 	# 下载游戏本体
 	if [ ! -f "$DST_DEFAULT_PATH/version.txt" ]; then
 		echo "正在下载饥荒游戏本体！！！"
-		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit
+		if ! download_game_body DEFAULT; then
+			echo -e "\e[1;31m正式版游戏本体下载失败，请检查网络后重新运行脚本。\e[0m"
+		fi
 	fi
-	# if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
-	# 	echo "正在下载饥荒测试版游戏本体！！！"
-	# 	run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
-	# fi
+	# 测试版本体只在确有存档使用测试版时才准备，避免默认就下载两份本体。
+	# 下载失败不阻断脚本启动：相关存档在开服前会再次校验并给出明确提示。
+	if cluster_config_uses_beta; then
+		if ! ensure_beta_game_body; then
+			echo -e "\e[1;33m检测到有存档使用测试版，但测试版本体当前不可用，相关存档暂时无法启动。\e[0m"
+		fi
+		# 顺带补齐这些存档在测试版目录下的副本，避免菜单里路径解析到正式版目录。
+		local beta_cluster
+		while IFS= read -r beta_cluster; do
+			[ -n "$beta_cluster" ] || continue
+			migrate_cluster_to_beta_save "$beta_cluster"
+		done < <(cluster_names_using_beta)
+	fi
+}
+
+# 列出配置为测试版的存档名
+cluster_names_using_beta() {
+	local config_file cluster_dir
+	for config_file in "$DST_SAVE_PATH"/*/ScriptFiles/config.txt; do
+		[ -f "$config_file" ] || continue
+		grep --text -q "正式版" "$config_file" && continue
+		cluster_dir=${config_file%/ScriptFiles/config.txt}
+		printf '%s\n' "${cluster_dir##*/}"
+	done
+}
+
+# 是否存在配置为测试版的存档（用于启动时按需准备测试版本体）
+cluster_config_uses_beta() {
+	local config_file
+	for config_file in "$DST_SAVE_PATH"/*/ScriptFiles/config.txt; do
+		[ -f "$config_file" ] || continue
+		if ! grep --text -q "正式版" "$config_file"; then
+			return 0
+		fi
+	done
+	return 1
 }
 
 # 切换游戏版本
@@ -3801,24 +4030,18 @@ change_game_version() {
 		echo "更改该存档服务端版本为正式版64位!"
 		sed -i "1s/${game_version_now}/正式版64位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "3" ]; then
+		# 只有测试版本体确认可用后才写入配置，避免出现“配置已是测试版但本体缺失”
+		# 导致存档反复启动失败。
+		if ! ensure_beta_game_body "$cluster_name"; then
+			return 1
+		fi
 		echo "更改该存档服务端版本为测试版32位!"
-		if [ ! -d "./DST_BETA" ]; then
-			mkdir -p "$DST_BETA_PATH"
-		fi
-		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
-			echo "正在下载饥荒测试版游戏本体！！！"
-			run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
-		fi
 		sed -i "1s/${game_version_now}/测试版32位/g" "$script_files_path/config.txt"
 	elif [ "$game_version" == "4" ]; then
+		if ! ensure_beta_game_body "$cluster_name"; then
+			return 1
+		fi
 		echo "更改该存档服务端版本为测试版64位!"
-		if [ ! -d "./DST_BETA" ]; then
-			mkdir -p "$DST_BETA_PATH"
-		fi
-		if [ ! -f "$DST_BETA_PATH/version.txt" ]; then
-			echo "正在下载饥荒测试版游戏本体！！！"
-			run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 -beta $BETA_TOKEN validate +quit
-		fi
 		sed -i "1s/${game_version_now}/测试版64位/g" "$script_files_path/config.txt"
 	else
 		# 如果用户输入的序号无效，则提示用户重新输入
@@ -3827,10 +4050,12 @@ change_game_version() {
 	fi
 }
 
+
 # 用地上备份回档
 get_server_save_path_master() {
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Master" ]; then
-		server_save_path_master="${DST_SAVE_PATH}/$cluster_name/Master"
+	get_path_cluster "$cluster_name"
+	if [ -d "${cluster_path}/Master" ]; then
+		server_save_path_master="${cluster_path}/Master"
 		cd "$server_save_path_master"/saves_bak || exit
 		echo "当前存档备份列表"
 		ls
@@ -3850,8 +4075,9 @@ get_server_save_path_master() {
 
 # 用地下备份回档
 get_server_save_path_caves() {
-	if [ -d "${DST_SAVE_PATH}/$cluster_name/Caves" ]; then
-		server_save_path_caves="${DST_SAVE_PATH}/$cluster_name/Caves"
+	get_path_cluster "$cluster_name"
+	if [ -d "${cluster_path}/Caves" ]; then
+		server_save_path_caves="${cluster_path}/Caves"
 		cd "$server_save_path_caves"/saves_bak || exit
 		echo "当前存档备份列表"
 		ls

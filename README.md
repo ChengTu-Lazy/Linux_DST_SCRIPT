@@ -21,6 +21,10 @@
 
 - 支持 Ubuntu 和 Debian。
 - 游戏版本可在 `[7]更改存档开启方式` 中选择，默认正式版 32 位，仅需更改一次，之后会保持该版本。
+- 测试版使用 Steam 官方公开测试分支 `updatebeta`，下载到 `$HOME/DST_BETA`，与正式版 `$HOME/DST` 互不影响，同一台机器可以同时存在正式版和测试版存档。
+- 测试版服务端使用独立的存档根目录 `$HOME/.klei/DoNotStarveTogetherBetaBranch`（正式版是 `$HOME/.klei/DoNotStarveTogether`），脚本会按存档配置自动解析。把正式版存档切换为测试版时，脚本会把该存档的世界和 `cluster_token.txt` 复制到测试版目录，原正式版存档保持不变。
+- 切换到测试版时会先下载并校验测试版本体，只有本体完整（`version.txt`、SteamCMD 清单、服务端主程序都存在）才会写入 `测试版32位/64位` 配置；下载失败会保留原来的正式版配置，不会出现“配置是测试版但本体缺失”的开服失败。
+- 自动更新会按存档所用版本分别检查：正式版查询 Klei `release` 分支，测试版查询 `updatebeta` 分支，两者版本号都取自 Klei 官方构建列表。
 - 自动更新服务器 mod 和服务器。
 - 崩档后自动重启服务器。
 - 提供默认的 token 文件模板。
@@ -73,6 +77,24 @@ export DST_SCRIPT_GIT_URL="你的可用镜像仓库地址"
 ./DST_SCRIPT.sh
 ```
 
+## 测试版（beta）服务器
+
+- 在 `[7]更改存档默认配置` → `[1]默认游戏开启版本` 中选择 `3.测试版32位` 或 `4.测试版64位` 即把该存档切换为测试版；切换时会自动下载测试版本体到 `$HOME/DST_BETA`。
+- 下载测试版本体必须能访问 Steam 内容服务器（`*.steamcontent.com`）。如果 SteamCMD 报 `Failed to download ... (No connection)` 或一直停在 `Update state reconfiguring`，说明是网络/代理问题，不是脚本参数问题；请先确认代理或直连可以正常下载 Steam 内容。
+- 测试版相关环境变量（均可选）：
+
+```text
+DST_SCRIPT_BETA_BRANCH      # Steam 测试分支名，默认 updatebeta
+DST_SCRIPT_BETA_PASSWORD    # 分支密码，默认留空；公开测试分支不需要
+DST_SCRIPT_BETA_PATH        # 测试版本体目录，默认 $HOME/DST_BETA
+DST_SCRIPT_BETA_SAVE_PATH   # 测试版存档根目录，默认 $HOME/.klei/DoNotStarveTogetherBetaBranch
+```
+
+- 分支密码不是分支名：脚本使用 `-beta <分支名>`，只有配置了 `DST_SCRIPT_BETA_PASSWORD` 时才会额外追加 `-betapassword <密码>`。旧版本曾把 `returnofthembeta` 当作分支名传给 `-beta`，会直接报 `ERROR! Failed to set beta`。
+- 切换到测试版时会校验 `$HOME/DST_BETA` 里的本体确实是测试分支（SteamCMD 清单中带有 `BetaKey`）。如果该目录里是正式版本体，或上次下载被中断导致文件缺失，脚本会重新下载，而不会误判为“已经装好测试版”。
+- SteamCMD 默认不使用系统代理（避免代理线路到 Steam 内容 CDN 握手失败导致 `Failed downloading … No connection`），同时会把 `127.0.0.1` 加入 `no_proxy`。如果需要让 SteamCMD 走代理，设置 `DST_SCRIPT_STEAMCMD_USE_PROXY=true`。
+- SteamCMD 提示 `Missing game files`（状态 `0x42x`）通常说明本地本体目录不完整，按提示删除 `$HOME/DST_BETA` 或 `$HOME/DST` 后重新下载即可。
+
 ## 发布单文件程序
 
 GitHub Actions 只会在推送 tag 时构建并创建 GitHub Release，普通提交、pull request 或只修改 `DST_SCRIPT.sh` 中的 `script_version` 都不会主动生成版本。
@@ -88,8 +110,8 @@ dst-ws-client-linux-amd64
 发布命令：
 
 ```bash
-git tag v1.8.23
-git push origin v1.8.23
+git tag v1.8.24
+git push origin v1.8.24
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。

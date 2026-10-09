@@ -40,51 +40,19 @@ jobs:
             DST_SCRIPT.sh
             config.example.json
           body: |
-            本版本重点修复 DST Workshop Mod 启动前校验和启动超时误重启问题。
+            本版本修复测试版服务端下载、切换和存档路径处理。
 
-            ### 启动与 Mod 修复
+            ### 测试版服务端
 
-            - 启动检查改为基于本次新增日志判断 ready、fatal 与终止状态，避免历史日志导致误判。
-            - 对能够明确归属的 Workshop Mod 故障执行事务式修复；替换失败时恢复旧文件，归属不明确时保留现场。
-            - 为 SteamCMD Mod 下载增加最大尝试次数和总时长边界，并将失败状态传播给启动流程。
-            - 所有 V2 Workshop Mod 在启动前由单个 SteamCMD 进程串行下载并执行 `validate`，避免 Master/Caves 并发写入同一 UGC 目录。
-            - 保留 `appworkshop_322330.acf`，并逐项检查 SteamCMD 的 `Success. Downloaded item <id>` 成功标志及 Mod 必需文件。
-            - 已存在的 V1 Mod 不再被误判为需要 SteamCMD 下载的 V2 Mod。
-            - 精确识别 DST 进程与 `screen` 会话，避免重复启动或误关闭名称相近的会话。
-            - 关闭分片时校验本次保存和关闭日志，失败时停止后续重启并保留现场。
-            - `DownloadServerMods timed out with no response from Workshop...` 继续使用启动前已校验的本地 Mod，不再立即重启仍在加载的世界。
-            - 启动分片增加 `-skip_update_server_mods`，避免 DST 启动阶段再次并发更新 Workshop Mod。
-
-            ### 自动维护与备份
-
-            - 自动备份前检查在线玩家；有人在线时跳过本轮备份。
-            - 备份压缩使用低 CPU、低 I/O 优先级和临时文件，成功后再原子替换正式 ZIP。
-            - Mod 与游戏本体使用独立计时器，默认分别约每 1 分钟和 10 分钟检查一次。
-            - 保留 `auto_update_anyway = true` 的原有默认行为，不改变服务器强制更新策略。
-
-            ### 游戏与脚本更新
-
-            - 根据存档分支从 Klei 官方 `builds.json` 获取正式版或测试版最新服务端版本号。
-            - 本地版本与官方一致时不再执行完整 SteamCMD 校验；远端版本更高时才进入更新流程。
-            - `version.txt` 缺失时执行一次 SteamCMD 修复安装，官方版本低于本地时停止并保留现场。
-            - SteamCMD 更新继续同时校验退出码和 `Success! App '343050' fully installed.` 固定成功标志。
-            - 更新完成后比较 `version.txt` 与 buildid，仅确认发生变化时重启服务器。
-            - 脚本自更新会先校验候选脚本语法，再通过临时文件原子替换当前脚本。
-
-            ### 玩家管理与历史统计
-
-            - 控制台新增玩家管理，支持踢出、Ban、解除 Ban、添加和移除管理员。
-            - 玩家管理优先使用 `ScriptFiles/playerlist.txt` 与 `ScriptFiles/Player/*.zip` 中的历史人员信息，没有历史记录时查询当前世界。
-            - 自动更新进程汇总历史玩家快照，记录采样次数和估算游玩时长，并限制单次统计增量不超过 120 秒。
-
-            ### 验证
-
-            - 新增隔离测试脚本，覆盖启动、Mod 修复、关闭、备份、游戏版本检查和脚本自更新流程。
-            - 新增隔离测试覆盖历史玩家权限、玩家统计和制表符输出。
-            - 当前测试结果为 `passed=95 failed=0`。
+            - SteamCMD 使用公开测试分支 `updatebeta`；只有配置分支密码时才传入 `-betapassword`。
+            - 测试版本体与正式版本体使用独立目录，切换前检查版本文件、SteamCMD 清单、测试分支标记和服务端主程序。
+            - 测试版使用独立存档根目录；切换时复制已有存档和 Token，正式版原存档保留。
+            - 下载失败时保留原游戏版本配置；缺少测试版本体时阻止启动并给出提示。
+            - SteamCMD 默认直连内容服务器，可通过 `DST_SCRIPT_STEAMCMD_USE_PROXY=true` 使用系统代理。
+            - 补充测试版下载、版本切换、本体检查和存档路径的隔离测试。
 
             ### 发布内容
 
             - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.23`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.24`。
           fail_on_unmatched_files: true
