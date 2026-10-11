@@ -18,7 +18,7 @@ DST_BETA_SAVE_PATH="${DST_SCRIPT_BETA_SAVE_PATH:-$HOME/.klei/DoNotStarveTogether
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="${DST_SCRIPT_BETA_PATH:-$HOME/DST_BETA}"
 #脚本版本
-script_version="1.8.24"
+script_version="1.8.25"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
@@ -2452,11 +2452,13 @@ restart_server() {
 	cluster_name=$1
 	auto_flag=$2
 	check_player=$3
+	local check_flag=0
 	if ! close_server "$cluster_name" "$auto_flag" "$check_player"; then
 		log_with_timestamp "服务器关闭未得到安全确认，取消本次重启。"
 		return 1
 	fi
-	howtostart "$cluster_name" "$auto_flag" "$check_player"
+	howtostart "$cluster_name" "$auto_flag" "$check_player" || return 1
+	[ "$check_flag" -eq 1 ]
 }
 
 # 测试版下载额外参数。SteamCMD 的 -beta 只接受分支名；
@@ -2959,6 +2961,13 @@ checkupdate() {
     local update_version_flag="BETA"
 	local remote_version=""
 	local update_required=false
+	local running_buildid=""
+	local pending_restart_file="$script_files_path/game_update_pending_restart"
+	# 自动维护不能无限等待 SteamCMD；手动安装仍沿用原来的超时设置。
+	local STEAMCMD_TIMEOUT_SECONDS=${AUTO_UPDATE_GAME_TIMEOUT_SECONDS:-600}
+	if ! [[ "$STEAMCMD_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
+		STEAMCMD_TIMEOUT_SECONDS=600
+	fi
 
     if [ "$buildid_version_flag" == "public" ]; then
         update_version_flag="DEFAULT"
@@ -2966,6 +2975,31 @@ checkupdate() {
 
     local_version=$(get_game_version_value "$gamesPath")
     local_buildid=$(get_game_buildid_value "$gamesPath")
+	if [ -f "$script_files_path/cluster_game_buildid.txt" ]; then
+		running_buildid=$(tr -d '[:space:]' <"$script_files_path/cluster_game_buildid.txt")
+	fi
+
+	restart_updated_game() {
+		local auto_update_anyway
+		# 关闭失败或玩家在线时保留标记，下次检查必须继续尝试重启。
+		: >"$pending_restart_file" || return 1
+		auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+		c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
+		if [ "$auto_update_anyway" == "true" ]; then
+			restart_server "$cluster_name" -AUTO || return 1
+		else
+			restart_server "$cluster_name" -AUTO -NOBODY || return 1
+		fi
+		rm -f "$pending_restart_file"
+	}
+
+	# 同分支存档共用本体；另一个存档完成下载也必须触发本存档重启。
+	if [ -f "$pending_restart_file" ] ||
+		{ [[ "$running_buildid" =~ ^[0-9]+$ ]] && [[ "$local_buildid" =~ ^[0-9]+$ ]] && [ "$running_buildid" != "$local_buildid" ]; }; then
+		echo -e "\e[33m${DST_now}:游戏本体已更新，当前存档尚未完成重启，尝试重启。\e[0m"
+		restart_updated_game
+		return $?
+	fi
 
     update_game_and_restart_if_changed() {
         local old_version=$1
@@ -2995,13 +3029,7 @@ checkupdate() {
         echo -e "\e[92m更新后buildid: ${new_buildid:-未知}\e[0m"
 
         if [ "$new_version" != "$old_version" ] || [ "$new_buildid" != "$old_buildid" ]; then
-            auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
-            c_announce="由于游戏本体有更新，服务器即将关闭，给您带来的不便还请谅解！！！"
-            if [ "$auto_update_anyway" == "true" ]; then
-                restart_server "$cluster_name" -AUTO
-            else
-                restart_server "$cluster_name" -AUTO -NOBODY
-            fi
+            restart_updated_game
         else
             echo -e "\e[92m${DST_now}:已执行SteamCMD同步，游戏版本号和buildid均未变化，不重启\e[0m"
         fi
@@ -3041,6 +3069,16 @@ checkupdate() {
 		echo " "
 		echo -e "\e[31m${DST_now}:Klei官方版本号 $remote_version 高于本地版本号 $local_version，确认游戏服务端有更新! \e[0m"
 		echo " "
+	fi
+	local auto_update_anyway
+	auto_update_anyway=$(grep --text auto_update_anyway "$script_files_path/config.txt" | awk '{print $3}')
+	if [ "$auto_update_anyway" != "true" ]; then
+		have_player=true
+		get_playerList "$cluster_name"
+		if [ "$have_player" != "false" ]; then
+			echo "服务器有玩家在线或玩家状态未确认，暂不更新游戏本体。"
+			return 0
+		fi
 	fi
 	update_game_and_restart_if_changed "$local_version" "$local_buildid" "$update_version_flag"
 }

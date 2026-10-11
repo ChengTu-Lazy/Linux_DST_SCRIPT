@@ -25,6 +25,8 @@
 - 测试版服务端使用独立的存档根目录 `$HOME/.klei/DoNotStarveTogetherBetaBranch`（正式版是 `$HOME/.klei/DoNotStarveTogether`），脚本会按存档配置自动解析。把正式版存档切换为测试版时，脚本会把该存档的世界和 `cluster_token.txt` 复制到测试版目录，原正式版存档保持不变。
 - 切换到测试版时会先下载并校验测试版本体，只有本体完整（`version.txt`、SteamCMD 清单、服务端主程序都存在）才会写入 `测试版32位/64位` 配置；下载失败会保留原来的正式版配置，不会出现“配置是测试版但本体缺失”的开服失败。
 - 自动更新会按存档所用版本分别检查：正式版查询 Klei `release` 分支，测试版查询 `updatebeta` 分支，两者版本号都取自 Klei 官方构建列表。
+- 自动游戏更新会保留待重启状态：仅无人更新配置会在下载前检查玩家，下载后玩家上线或安全关闭失败时，下次检查继续尝试重启；多个存档共用同分支本体时，每个存档都会根据启动时记录的 buildid 判断是否需要重启。开服检查成功后才清除待重启标记。
+- 自动游戏更新的 SteamCMD 默认最多运行 600 秒，超时后先发送 TERM，再最多等待 30 秒强制结束，维护循环随后继续；可通过 `AUTO_UPDATE_GAME_TIMEOUT_SECONDS` 设置正整数秒数。下载期间维护任务仍串行等待，不是精确的定时执行。
 - 自动更新服务器 mod 和服务器。
 - 崩档后自动重启服务器。
 - 提供默认的 token 文件模板。
@@ -110,8 +112,8 @@ dst-ws-client-linux-amd64
 发布命令：
 
 ```bash
-git tag v1.8.24
-git push origin v1.8.24
+git tag v1.8.25
+git push origin v1.8.25
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。

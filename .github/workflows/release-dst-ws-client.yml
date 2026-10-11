@@ -40,19 +40,17 @@ jobs:
             DST_SCRIPT.sh
             config.example.json
           body: |
-            本版本修复测试版服务端下载、切换和存档路径处理。
+            本版本修复自动游戏更新后的漏重启，并限制后台 SteamCMD 等待时间。
 
-            ### 测试版服务端
+            ### 自动游戏更新
 
-            - SteamCMD 使用公开测试分支 `updatebeta`；只有配置分支密码时才传入 `-betapassword`。
-            - 测试版本体与正式版本体使用独立目录，切换前检查版本文件、SteamCMD 清单、测试分支标记和服务端主程序。
-            - 测试版使用独立存档根目录；切换时复制已有存档和 Token，正式版原存档保留。
-            - 下载失败时保留原游戏版本配置；缺少测试版本体时阻止启动并给出提示。
-            - SteamCMD 默认直连内容服务器，可通过 `DST_SCRIPT_STEAMCMD_USE_PROXY=true` 使用系统代理。
-            - 补充测试版下载、版本切换、本体检查和存档路径的隔离测试。
+            - 游戏本体更新后保留待重启状态，玩家在线或安全关闭失败时在下次检查重试。
+            - 共用同分支游戏本体的存档分别检查启动 buildid，避免只重启下载更新的存档。
+            - 自动游戏更新默认设置 600 秒 SteamCMD 超时，可通过 `AUTO_UPDATE_GAME_TIMEOUT_SECONDS` 调整；超时后恢复维护循环。
+            - 补充重启重试、共用本体及超时处理的隔离回归测试。
 
             ### 发布内容
 
             - Release 附带 `dst-ws-client-linux-amd64`、`DST_SCRIPT.sh` 和 `config.example.json`。
-            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.24`。
+            - `DST_SCRIPT.sh` 脚本版本更新至 `1.8.25`。
           fail_on_unmatched_files: true

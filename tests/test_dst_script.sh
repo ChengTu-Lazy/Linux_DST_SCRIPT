@@ -923,6 +923,101 @@ test_game_update_precheck() (
 	assert_contains "$calls" 'update:BETA' "测试版远端版本高于本地后执行更新"
 )
 
+test_game_update_restart_recovery() (
+	local sandbox="$test_root/game-restart-recovery"
+	local calls="$sandbox/calls.log"
+	local pending="$sandbox/fixture/game_update_pending_restart"
+	local restart_ok=false
+	local players_online=false
+	mkdir -p "$sandbox/game/steamapps" "$sandbox/fixture" "$sandbox/other"
+	printf '100\n' >"$sandbox/game/version.txt"
+	printf '"buildid" "1000"\n' >"$sandbox/game/steamapps/appmanifest_343050.acf"
+	printf '1000\n' >"$sandbox/fixture/cluster_game_buildid.txt"
+	printf '1000\n' >"$sandbox/other/cluster_game_buildid.txt"
+	printf 'auto_update_anyway = false\n' | tee "$sandbox/fixture/config.txt" >"$sandbox/other/config.txt"
+	get_path_games() { gamesPath="$sandbox/game"; buildid_version_flag=public; }
+	get_path_script_files() { script_files_path="$sandbox/$1"; }
+	clean_steam_userdata() { :; }
+	get_remote_game_version() { echo query >>"$calls"; printf '101\n'; }
+	get_playerList() { have_player=$players_online; }
+	update_game() {
+		echo "update:timeout=$STEAMCMD_TIMEOUT_SECONDS" >>"$calls"
+		printf '101\n' >"$sandbox/game/version.txt"
+		printf '"buildid" "1001"\n' >"$sandbox/game/steamapps/appmanifest_343050.acf"
+	}
+	restart_server() {
+		echo "restart:$*" >>"$calls"
+		[ "$restart_ok" == true ] || return 1
+		printf '1001\n' >"$sandbox/$1/cluster_game_buildid.txt"
+	}
+
+	players_online=true
+	checkupdate fixture >"$sandbox/online.log" 2>&1
+	assert_not_contains "$calls" 'update:' "仅无人更新配置在有人在线时不下载游戏本体"
+	players_online=false
+	if checkupdate fixture >"$sandbox/first.log" 2>&1; then
+		fail "更新后重启失败返回非零"
+	else
+		pass "更新后重启失败返回非零"
+	fi
+	if [ -f "$pending" ]; then pass "重启失败保留待重启标记"; else fail "重启失败保留待重启标记"; fi
+	assert_contains "$calls" 'update:timeout=600' "自动游戏更新使用默认600秒超时"
+	: >"$calls"
+	checkupdate fixture >"$sandbox/retry.log" 2>&1
+	assert_contains "$calls" 'restart:fixture -AUTO -NOBODY' "磁盘已最新仍重试受无人配置限制的重启"
+	assert_not_contains "$calls" 'update:' "待重启时不重复下载"
+	assert_not_contains "$calls" query "待重启恢复不依赖远端查询"
+
+	restart_ok=true
+	checkupdate fixture >"$sandbox/recovered.log" 2>&1
+	if [ ! -f "$pending" ]; then pass "重启成功清除待重启标记"; else fail "重启成功清除待重启标记"; fi
+	: >"$calls"
+	checkupdate fixture >"$sandbox/current.log" 2>&1
+	assert_not_contains "$calls" restart "运行buildid与磁盘一致时不重复重启"
+	: >"$calls"
+	checkupdate other >"$sandbox/shared.log" 2>&1
+	assert_contains "$calls" 'restart:other -AUTO -NOBODY' "共用本体的另一个存档独立重启"
+	assert_not_contains "$calls" 'update:' "共用本体已更新时无需重新下载"
+)
+
+test_auto_game_update_timeout() (
+	local sandbox="$test_root/game-update-timeout"
+	mkdir -p "$sandbox/game/steamapps" "$sandbox/scripts"
+	printf '100\n' >"$sandbox/game/version.txt"
+	printf 'auto_update_anyway = true\n' >"$sandbox/scripts/config.txt"
+	cat >"$sandbox/steamcmd" <<'EOF'
+#!/bin/bash
+exec sleep 20
+EOF
+	chmod +x "$sandbox/steamcmd"
+	DST_DEFAULT_PATH="$sandbox/game"
+	get_path_games() { gamesPath="$sandbox/game"; buildid_version_flag=public; }
+	get_path_script_files() { script_files_path="$sandbox/scripts"; }
+	clean_steam_userdata() { :; }
+	get_remote_game_version() { printf '101\n'; }
+	ensure_steamcmd() { STEAMCMD_BIN="$sandbox/steamcmd"; }
+	restart_server() { echo restart >>"$sandbox/calls"; }
+	AUTO_UPDATE_GAME_TIMEOUT_SECONDS=1
+	local started=$SECONDS
+	if checkupdate fixture >"$sandbox/output.log" 2>&1; then
+		fail "自动游戏更新超时返回失败"
+	else
+		pass "自动游戏更新超时返回失败"
+	fi
+	if [ $((SECONDS - started)) -lt 10 ]; then pass "SteamCMD超时后控制权返回调用方"; else fail "SteamCMD超时后控制权返回调用方"; fi
+	assert_contains "$sandbox/output.log" '退出码: 124' "真实timeout命令终止隔离SteamCMD桩进程"
+	if [ ! -e "$sandbox/calls" ]; then pass "下载超时不重启服务器"; else fail "下载超时不重启服务器"; fi
+)
+
+test_restart_requires_successful_start() (
+	close_server() { return 0; }
+	log_with_timestamp() { :; }
+	howtostart() { check_flag=0; return 0; }
+	if restart_server fixture -AUTO; then fail "开服检查失败时重启返回失败"; else pass "开服检查失败时重启返回失败"; fi
+	howtostart() { check_flag=1; return 0; }
+	if restart_server fixture -AUTO; then pass "开服检查成功时重启返回成功"; else fail "开服检查成功时重启返回成功"; fi
+)
+
 test_beta_steamcmd_args_and_install_check() (
 	local sandbox="$test_root/beta-steamcmd"
 	local calls="$sandbox/calls.log"
@@ -1212,6 +1307,9 @@ test_player_statistics
 test_update_game_result_validation
 test_remote_game_version
 test_game_update_precheck
+test_game_update_restart_recovery
+test_auto_game_update_timeout
+test_restart_requires_successful_start
 test_beta_steamcmd_args_and_install_check
 test_beta_version_switch_requires_install
 test_missing_beta_body_blocks_start
