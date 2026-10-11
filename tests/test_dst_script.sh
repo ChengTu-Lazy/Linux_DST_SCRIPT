@@ -753,7 +753,7 @@ test_update_game_result_validation() (
 	else
 		fail "SteamCMD退出码和固定成功标志齐全时更新成功"
 	fi
-	assert_contains "$calls" '+app_update 343050 validate +quit' "真实游戏更新仍保留SteamCMD完整校验"
+	assert_contains "$calls" '+app_info_update 1 +app_update 343050 -beta public validate +quit' "正式版显式选择public并刷新应用信息及完整校验"
 
 	steam_mode=missing_marker
 	if update_game DEFAULT >"$sandbox/missing-marker.log" 2>&1; then
@@ -768,6 +768,106 @@ test_update_game_result_validation() (
 	else
 		pass "SteamCMD非零退出时更新失败"
 	fi
+)
+
+test_game_manifest_recovery() (
+	local sandbox="$test_root/manifest-recovery"
+	export HOME="$sandbox/home"
+	DST_DEFAULT_PATH="$sandbox/stable"
+	DST_BETA_PATH="$sandbox/beta"
+	DST_SCRIPT_BETA_BRANCH=custombeta
+	DST_SCRIPT_BETA_PASSWORD=fixture-password
+	local fixture_content_log="$HOME/Steam/logs/content_log.txt"
+	local calls="$sandbox/calls" mode game_path manifest original version_flag result count backup
+	mkdir -p "$(dirname "$fixture_content_log")" "$DST_DEFAULT_PATH/steamapps" "$DST_BETA_PATH/steamapps"
+	original="$sandbox/original.acf"
+	cat >"$original" <<'EOF'
+"AppState"
+{
+    "appid" "343050"
+    "buildid" "10203"
+    "InstalledDepots"
+    {
+        "765432"
+        {
+            "manifest" "998877665544"
+        }
+    }
+}
+EOF
+	printf 'game-files-stay\n' >"$DST_DEFAULT_PATH/existing-game-file"
+	run_steamcmd() {
+		printf '%s timeout=%s\n' "$*" "$STEAMCMD_TIMEOUT_SECONDS" >>"$calls"
+		local invocation=$(wc -l <"$calls") app=343050 depot=765432 gid=998877665544
+		if [ "$invocation" -eq 1 ]; then
+			case "$mode" in
+				unrelated_depot) depot=123456 ;;
+				wrong_app) app=322330 ;;
+				wrong_manifest) gid=112233 ;;
+				rotated) mv "$fixture_content_log" "$fixture_content_log.rotated" ;;
+			esac
+			if [ "$mode" != network ] && [ "$mode" != historical ]; then
+				printf "CDepotDownloadMgr::BYldRequestDepotManifest(App: %s, Depot: %s, Manifest: %s, branch: ): Failed to get manifest request code, 'Access Denied'\n" "$app" "$depot" "$gid" >>"$fixture_content_log"
+			fi
+			case "$mode" in budget|budget_remaining) sleep 1 ;; esac
+			printf "Error! App '343050' state is 0x6 after update job.\n"
+			[ "$mode" != timeout ] || return 124
+			return 8
+		fi
+		if [ -f "$manifest" ]; then
+			echo 'retry did not reset installed manifest'
+			return 9
+		fi
+		printf 'rebuilt-manifest\n' >"$manifest"
+		case "$mode" in
+			recover_failure) return 8 ;;
+			missing_marker) return 0 ;;
+			success_nonzero) printf "Success! App '343050' fully installed.\n"; return 8 ;;
+		esac
+		printf "Success! App '343050' fully installed.\n"
+	}
+
+	for mode in recover_success recover_beta budget_remaining recover_failure missing_marker success_nonzero network unrelated_depot wrong_app wrong_manifest historical rotated budget timeout; do
+		version_flag=DEFAULT game_path="$DST_DEFAULT_PATH"
+		if [ "$mode" == recover_beta ]; then version_flag=BETA; game_path="$DST_BETA_PATH"; fi
+		manifest="$game_path/steamapps/appmanifest_343050.acf"
+		cp "$original" "$manifest"
+		: >"$calls"
+		printf "historical App: 343050, Depot: 765432, Manifest: 998877665544, Failed to get manifest request code, 'Access Denied'\n" >"$fixture_content_log"
+		STEAMCMD_TIMEOUT_SECONDS=0
+		[ "$mode" != budget ] || STEAMCMD_TIMEOUT_SECONDS=1
+		[ "$mode" != budget_remaining ] || STEAMCMD_TIMEOUT_SECONDS=3
+		result=0
+		download_game_body "$version_flag" >"$sandbox/$mode.log" 2>&1 || result=$?
+		count=$(wc -l <"$calls")
+		case "$mode" in
+			recover_success|recover_beta|budget_remaining)
+				if [ "$result" -eq 0 ] && [ "$count" -eq 2 ] && [ ! -e "$game_path/steamapps/.dst-script-update-incomplete" ]; then pass "$mode：一次恢复成功并清除未完成状态"; else fail "$mode：一次恢复成功并清除未完成状态"; fi
+				assert_contains "$manifest" rebuilt-manifest "$mode：成功后保留重建的安装清单"
+				backup=$(find "$game_path/steamapps" -name original.acf | head -n 1)
+				if [ -n "$backup" ] && cmp -s "$original" "$backup"; then pass "$mode：保留原清单备份"; else fail "$mode：保留原清单备份"; fi
+				;;
+			recover_failure|missing_marker|success_nonzero)
+				if [ "$result" -ne 0 ] && [ "$count" -eq 2 ] && cmp -s "$original" "$manifest" && [ -f "$game_path/steamapps/.dst-script-update-incomplete" ]; then pass "$mode：恢复失败还原清单并保留未完成状态，不无限重试"; else fail "$mode：恢复失败还原清单并保留未完成状态，不无限重试"; fi
+				;;
+			*)
+				if [ "$result" -ne 0 ] && [ "$count" -eq 1 ] && cmp -s "$original" "$manifest"; then pass "$mode：不触发安装清单恢复"; else fail "$mode：不触发安装清单恢复"; fi
+				;;
+		esac
+		if [ "$version_flag" == BETA ]; then
+			assert_contains "$calls" '-beta custombeta -betapassword fixture-password validate' "恢复测试版仍保留自定义分支和密码参数"
+		fi
+		if [ "$mode" == budget_remaining ]; then
+			if tail -n 1 "$calls" | grep -Eq 'timeout=[12]$'; then pass "恢复重试只使用原超时预算剩余秒数"; else fail "恢复重试只使用原超时预算剩余秒数"; fi
+		fi
+	done
+	assert_contains "$DST_DEFAULT_PATH/existing-game-file" game-files-stay "恢复流程保留现有游戏文件"
+	: >"$calls"
+	exec 8>"$HOME/.cache/dst-script-game-update.lock"
+	flock -n 8
+	if download_game_body DEFAULT >"$sandbox/locked.log" 2>&1; then fail "更新锁已占用时返回失败"; else pass "更新锁已占用时返回失败"; fi
+	if [ ! -s "$calls" ]; then pass "更新锁已占用时不启动SteamCMD"; else fail "更新锁已占用时不启动SteamCMD"; fi
+	exec 8>&-
 )
 
 test_remote_game_version() (
@@ -1007,6 +1107,37 @@ EOF
 	if [ $((SECONDS - started)) -lt 10 ]; then pass "SteamCMD超时后控制权返回调用方"; else fail "SteamCMD超时后控制权返回调用方"; fi
 	assert_contains "$sandbox/output.log" '退出码: 124' "真实timeout命令终止隔离SteamCMD桩进程"
 	if [ ! -e "$sandbox/calls" ]; then pass "下载超时不重启服务器"; else fail "下载超时不重启服务器"; fi
+)
+
+test_incomplete_game_update_precedes_restart() (
+	local sandbox="$test_root/incomplete-game-update"
+	local calls="$sandbox/calls"
+	local repair_ok=false
+	mkdir -p "$sandbox/game/steamapps" "$sandbox/scripts"
+	printf '101\n' >"$sandbox/game/version.txt"
+	printf '"buildid" "1001"\n' >"$sandbox/game/steamapps/appmanifest_343050.acf"
+	printf '1000\n' >"$sandbox/scripts/cluster_game_buildid.txt"
+	printf 'auto_update_anyway = true\n' >"$sandbox/scripts/config.txt"
+	: >"$sandbox/game/steamapps/.dst-script-update-incomplete"
+	: >"$sandbox/scripts/game_update_pending_restart"
+	get_path_games() { gamesPath="$sandbox/game"; buildid_version_flag=public; }
+	get_path_script_files() { script_files_path="$sandbox/scripts"; }
+	clean_steam_userdata() { :; }
+	get_remote_game_version() { echo query >>"$calls"; printf '101\n'; }
+	update_game() {
+		echo repair >>"$calls"
+		[ "$repair_ok" == true ] || return 1
+		rm -f "$sandbox/game/steamapps/.dst-script-update-incomplete"
+	}
+	restart_server() { echo restart >>"$calls"; }
+	if checkupdate fixture >"$sandbox/failed.log" 2>&1; then fail "未完成更新修复失败返回非零"; else pass "未完成更新修复失败返回非零"; fi
+	assert_contains "$calls" repair "磁盘已最新时仍优先修复未完成更新"
+	assert_not_contains "$calls" restart "未完成更新禁止提前执行待重启任务"
+	assert_not_contains "$calls" query "未完成更新不被官方版本一致判断跳过"
+	: >"$calls"
+	repair_ok=true
+	checkupdate fixture >"$sandbox/recovered.log" 2>&1
+	if [ "$(tr '\n' ' ' <"$calls")" == 'repair restart ' ]; then pass "修复完成后即使磁盘版本不变仍重启旧运行版本"; else fail "修复完成后即使磁盘版本不变仍重启旧运行版本"; fi
 )
 
 test_restart_requires_successful_start() (
@@ -1305,10 +1436,12 @@ test_generated_backup_path
 test_player_history_permissions
 test_player_statistics
 test_update_game_result_validation
+test_game_manifest_recovery
 test_remote_game_version
 test_game_update_precheck
 test_game_update_restart_recovery
 test_auto_game_update_timeout
+test_incomplete_game_update_precedes_restart
 test_restart_requires_successful_start
 test_beta_steamcmd_args_and_install_check
 test_beta_version_switch_requires_install

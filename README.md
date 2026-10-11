@@ -27,6 +27,9 @@
 - 自动更新会按存档所用版本分别检查：正式版查询 Klei `release` 分支，测试版查询 `updatebeta` 分支，两者版本号都取自 Klei 官方构建列表。
 - 自动游戏更新会保留待重启状态：仅无人更新配置会在下载前检查玩家，下载后玩家上线或安全关闭失败时，下次检查继续尝试重启；多个存档共用同分支本体时，每个存档都会根据启动时记录的 buildid 判断是否需要重启。开服检查成功后才清除待重启标记。
 - 自动游戏更新的 SteamCMD 默认最多运行 600 秒，超时后先发送 TERM，再最多等待 30 秒强制结束，维护循环随后继续；可通过 `AUTO_UPDATE_GAME_TIMEOUT_SECONDS` 设置正整数秒数。下载期间维护任务仍串行等待，不是精确的定时执行。
+- 本体安装与更新统一刷新 Steam 应用信息，并显式选择分支：正式版为 `public`，测试版沿用配置的分支及密码。脚本内的本体更新使用同一把非阻塞锁，已有更新执行时本次返回失败，等待后续检查；手动启动的外部 SteamCMD 不受该锁管理。
+- 只有本次 Steam 内容日志明确显示已安装 depot/manifest 的清单请求被 `Access Denied` 拒绝，才自动重建安装状态一次。脚本将原安装清单和诊断日志保存在本体目录 `steamapps/dst-script-manifest-recovery.XXXXXX/`，保留游戏文件并重新校验复用；不固定 depot、清单号、版本号或存档名称。普通网络错误、其他清单被拒绝以及历史错误不会触发此恢复。
+- 正常更新与恢复重试共用同一 SteamCMD 超时预算。失败时保留 `steamapps/.dst-script-update-incomplete`，恢复重试失败还会还原原安装清单；后续自动检查优先修复未完成更新，即使磁盘版本号已变化也不会直接重启。成功后清除未完成标记，再按存档启动版本决定是否重启。备份目录保留供排查，不自动清理。
 - 自动更新服务器 mod 和服务器。
 - 崩档后自动重启服务器。
 - 提供默认的 token 文件模板。
@@ -95,7 +98,7 @@ DST_SCRIPT_BETA_SAVE_PATH   # 测试版存档根目录，默认 $HOME/.klei/DoNo
 - 分支密码不是分支名：脚本使用 `-beta <分支名>`，只有配置了 `DST_SCRIPT_BETA_PASSWORD` 时才会额外追加 `-betapassword <密码>`。旧版本曾把 `returnofthembeta` 当作分支名传给 `-beta`，会直接报 `ERROR! Failed to set beta`。
 - 切换到测试版时会校验 `$HOME/DST_BETA` 里的本体确实是测试分支（SteamCMD 清单中带有 `BetaKey`）。如果该目录里是正式版本体，或上次下载被中断导致文件缺失，脚本会重新下载，而不会误判为“已经装好测试版”。
 - SteamCMD 默认不使用系统代理（避免代理线路到 Steam 内容 CDN 握手失败导致 `Failed downloading … No connection`），同时会把 `127.0.0.1` 加入 `no_proxy`。如果需要让 SteamCMD 走代理，设置 `DST_SCRIPT_STEAMCMD_USE_PROXY=true`。
-- SteamCMD 提示 `Missing game files`（状态 `0x42x`）通常说明本地本体目录不完整，按提示删除 `$HOME/DST_BETA` 或 `$HOME/DST` 后重新下载即可。
+- SteamCMD 提示 `Missing game files` 或更新失败时，先查看 Steam 内容日志和未完成更新状态；仅凭状态码不能确定根因，不要直接删除游戏目录。旧安装清单访问被拒绝时，脚本按上述规则进行一次恢复。
 
 ## 发布单文件程序
 
@@ -112,8 +115,8 @@ dst-ws-client-linux-amd64
 发布命令：
 
 ```bash
-git tag v1.8.25
-git push origin v1.8.25
+git tag v1.8.26
+git push origin v1.8.26
 ```
 
 推送 tag 后，进入 GitHub 仓库的 `Releases` 页面，在对应 tag 的 release 中下载 `dst-ws-client-linux-amd64`。

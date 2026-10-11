@@ -18,7 +18,7 @@ DST_BETA_SAVE_PATH="${DST_SCRIPT_BETA_SAVE_PATH:-$HOME/.klei/DoNotStarveTogether
 DST_DEFAULT_PATH="$HOME/DST"
 DST_BETA_PATH="${DST_SCRIPT_BETA_PATH:-$HOME/DST_BETA}"
 #脚本版本
-script_version="1.8.25"
+script_version="1.8.26"
 # 脚本更新仓库，可通过环境变量指定优先使用的镜像
 DST_SCRIPT_GIT_URL="${DST_SCRIPT_GIT_URL:-}"
 DST_SCRIPT_OFFICIAL_GIT_URL="https://github.com/ChengTu-Lazy/Linux_DST_SCRIPT.git"
@@ -2495,50 +2495,112 @@ dst_beta_body_ready() {
 	[ "$beta_key" == "$DST_SCRIPT_BETA_BRANCH" ]
 }
 
-# 下载/更新饥荒游戏本体。DEFAULT 为正式版，其余按测试版分支处理。
-download_game_body() {
+# 只有本次日志明确拒绝了已安装的清单，才允许重建安装状态。
+steamcmd_installed_manifest_denied() {
+	local app_id=$1 manifest_file=$2 content_log=$3
+	local depot_id manifest_id
+	[[ "$app_id" =~ ^[0-9]+$ ]] || return 1
+	[ -s "$manifest_file" ] && [ -s "$content_log" ] || return 1
+	while IFS=$'\t' read -r depot_id manifest_id; do
+		if grep --text -Eq "App: $app_id, Depot: $depot_id, Manifest: $manifest_id,.*Failed to get manifest request code, 'Access Denied'" "$content_log"; then
+			return 0
+		fi
+	done < <(awk -F '"' '
+		$2 == "InstalledDepots" { inside=1; next }
+		inside && /\{/ { depth++; next }
+		inside && /\}/ { if (--depth == 0) inside=0; next }
+		inside && depth == 1 && $2 ~ /^[0-9]+$/ { depot=$2 }
+		inside && depth == 2 && $2 == "manifest" && $4 ~ /^[0-9]+$/ { print depot "\t" $4 }
+	' "$manifest_file")
+	return 1
+}
+
+# 下载/更新本体；锁覆盖整个正常更新和恢复过程，子 shell 退出时释放。
+download_game_body() (
 	local version_flag=$1
-	local steamcmd_log
-	local steamcmd_status
-	local -a beta_args=()
-	if [[ ${version_flag} != "DEFAULT" ]]; then
+	local game_path="$DST_DEFAULT_PATH"
+	local app_id=343050 steamcmd_log content_delta manifest_file incomplete_file
+	local steamcmd_status attempt content_log baseline inode remaining recovery_dir="" recovery_candidate
+	local update_complete=false deadline=0
+	local -a beta_args=(-beta public) log_baselines=() log_inodes=()
+	local -a content_logs=("$HOME/Steam/logs/content_log.txt" "$HOME/.local/share/Steam/logs/content_log.txt" "$HOME/.steam/steam/logs/content_log.txt")
+	if [ "$version_flag" != "DEFAULT" ]; then
+		game_path="$DST_BETA_PATH"
 		mapfile -t beta_args < <(dst_beta_steamcmd_args)
 	fi
+	mkdir -p "$HOME/.cache" "$game_path/steamapps" || return 1
+	exec 9>"$HOME/.cache/dst-script-game-update.lock" || return 1
+	if ! flock -n 9; then
+		echo "另一个游戏本体更新正在执行，本次跳过，稍后重试。"
+		return 1
+	fi
+	manifest_file="$game_path/steamapps/appmanifest_${app_id}.acf"
+	incomplete_file="$game_path/steamapps/.dst-script-update-incomplete"
+	: >"$incomplete_file" || return 1
 	steamcmd_log=$(mktemp) || return 1
+	content_delta=$(mktemp) || { rm -f "$steamcmd_log"; return 1; }
+	trap 'if [ -n "$recovery_dir" ] && [ "$update_complete" != true ]; then cp -p "$recovery_dir/original.acf" "$manifest_file" || echo "恢复原安装清单失败，备份保留在 $recovery_dir/original.acf"; fi; rm -f "$steamcmd_log" "$content_delta"' EXIT
+	trap 'exit 130' INT
+	trap 'exit 143' TERM
+	if [[ "${STEAMCMD_TIMEOUT_SECONDS:-0}" =~ ^[1-9][0-9]*$ ]]; then
+		deadline=$((SECONDS + STEAMCMD_TIMEOUT_SECONDS))
+	fi
+	local STEAMCMD_TIMEOUT_SECONDS=${STEAMCMD_TIMEOUT_SECONDS:-0}
 	echo "正在更新游戏,请稍后。。。更新之后重启服务器生效哦。。。"
-	if [[ ${version_flag} == "DEFAULT" ]]; then
-		echo "同步最新正式版游戏本体内容中。。。"
-		run_steamcmd +force_install_dir "$DST_DEFAULT_PATH" +login anonymous +app_update 343050 validate +quit 2>&1 | tee "$steamcmd_log"
-	else
-		echo "同步最新测试版游戏本体内容中（分支 ${DST_SCRIPT_BETA_BRANCH}）。。。"
-		run_steamcmd +force_install_dir "$DST_BETA_PATH" +login anonymous +app_update 343050 "${beta_args[@]}" validate +quit 2>&1 | tee "$steamcmd_log"
-	fi
-	steamcmd_status=${PIPESTATUS[0]}
-
-	if [ "$steamcmd_status" -ne 0 ]; then
-		echo -e "\e[1;31mSteamCMD 进程执行失败，退出码: $steamcmd_status\e[0m"
-		rm -f "$steamcmd_log"
-		return 1
-	fi
-	if ! grep --text -Fq "Success! App '343050' fully installed." "$steamcmd_log"; then
-		echo -e "\e[1;31mSteamCMD 未返回游戏本体安装成功标志，本次更新按失败处理。\e[0m"
-		grep --text -E 'ERROR!|Error!|FAILED|Failure' "$steamcmd_log" | tail -n 10 || true
-		# "Missing game files" / state 0x42x 一般不是网络问题，而是本地目录不完整
-		# （例如被手工复制或上次下载被中断），必须删除目录重新完整下载才能修复。
-		if grep --text -Eq 'Missing game files|state is 0x42' "$steamcmd_log"; then
-			if [[ ${version_flag} == "DEFAULT" ]]; then
-				echo -e "\e[1;33m提示：$DST_DEFAULT_PATH 文件不完整，删除该目录后重新运行脚本即可完整下载。\e[0m"
-			else
-				echo -e "\e[1;33m提示：$DST_BETA_PATH 文件不完整，删除该目录后重新选择测试版即可完整下载。\e[0m"
+	for attempt in 1 2; do
+		if [ "$deadline" -gt 0 ]; then
+			remaining=$((deadline - SECONDS))
+			if [ "$remaining" -le 0 ]; then
+				echo "游戏更新超时预算已耗尽，保留未完成状态，等待下次检查。"
+				return 1
 			fi
+			STEAMCMD_TIMEOUT_SECONDS=$remaining
 		fi
-		rm -f "$steamcmd_log"
-		return 1
-	fi
-
-	rm -f "$steamcmd_log"
-	return 0
-}
+		for content_log in "${content_logs[@]}"; do
+			baseline=0 inode=""
+			if [ -f "$content_log" ]; then
+				baseline=$(wc -l <"$content_log")
+				inode=$(stat -Lc '%d:%i' "$content_log")
+			fi
+			log_baselines+=("$baseline")
+			log_inodes+=("$inode")
+		done
+		run_steamcmd +force_install_dir "$game_path" +login anonymous +app_info_update 1 +app_update "$app_id" "${beta_args[@]}" validate +quit 2>&1 | tee "$steamcmd_log"
+		steamcmd_status=${PIPESTATUS[0]}
+		if [ -n "$recovery_dir" ]; then
+			cp "$steamcmd_log" "$recovery_dir/retry.log" || echo "恢复重试日志备份失败：$recovery_dir/retry.log"
+		fi
+		if [ "$steamcmd_status" -eq 0 ] && grep --text -Fq "Success! App '$app_id' fully installed." "$steamcmd_log"; then
+			update_complete=true
+			rm -f "$incomplete_file" || return 1
+			return 0
+		fi
+		echo "SteamCMD 游戏更新失败，退出码: $steamcmd_status（必须同时返回固定安装成功标志）。"
+		[ "$attempt" -eq 1 ] || break
+		case "$steamcmd_status" in 124|130|137|143) break ;; esac
+		: >"$content_delta"
+		local i
+		for i in "${!content_logs[@]}"; do
+			content_log=${content_logs[$i]}
+			[ -f "$content_log" ] || continue
+			# 日志被轮转或截断时不凭历史记录触发恢复。
+			if [ -n "${log_inodes[$i]}" ] && [ "$(stat -Lc '%d:%i' "$content_log")" != "${log_inodes[$i]}" ]; then continue; fi
+			[ "$(wc -l <"$content_log")" -ge "${log_baselines[$i]}" ] || continue
+			tail -n +$((log_baselines[i] + 1)) "$content_log" >>"$content_delta"
+		done
+		steamcmd_installed_manifest_denied "$app_id" "$manifest_file" "$content_delta" || break
+		if [ "$deadline" -gt 0 ] && [ "$SECONDS" -ge "$deadline" ]; then break; fi
+		recovery_candidate=$(mktemp -d "$game_path/steamapps/dst-script-manifest-recovery.XXXXXX") || return 1
+		cp "$steamcmd_log" "$recovery_candidate/steamcmd.log" && cp "$content_delta" "$recovery_candidate/content.log" || return 1
+		# 仅移开安装清单；现有游戏文件由 SteamCMD 重新校验复用，存档和 Mod 不动。
+		cp -p "$manifest_file" "$recovery_candidate/original.acf" || return 1
+		recovery_dir=$recovery_candidate
+		rm -f "$manifest_file" || return 1
+		echo "已安装清单访问被拒绝，备份到 $recovery_dir；重建安装状态并重试一次。"
+	done
+	echo "更新未成功，保留未完成标记，后续检查将继续修复；不会据此重启服务器。"
+	return 1
+)
 
 # 更新游戏
 update_game() {
@@ -2963,6 +3025,10 @@ checkupdate() {
 	local update_required=false
 	local running_buildid=""
 	local pending_restart_file="$script_files_path/game_update_pending_restart"
+	if [ -f "$gamesPath/steamapps/.dst-script-update-incomplete" ]; then
+		update_required=true
+		echo "检测到游戏本体更新未完成，本次优先修复安装。"
+	fi
 	# 自动维护不能无限等待 SteamCMD；手动安装仍沿用原来的超时设置。
 	local STEAMCMD_TIMEOUT_SECONDS=${AUTO_UPDATE_GAME_TIMEOUT_SECONDS:-600}
 	if ! [[ "$STEAMCMD_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -2994,8 +3060,8 @@ checkupdate() {
 	}
 
 	# 同分支存档共用本体；另一个存档完成下载也必须触发本存档重启。
-	if [ -f "$pending_restart_file" ] ||
-		{ [[ "$running_buildid" =~ ^[0-9]+$ ]] && [[ "$local_buildid" =~ ^[0-9]+$ ]] && [ "$running_buildid" != "$local_buildid" ]; }; then
+	if [ "$update_required" != true ] && { [ -f "$pending_restart_file" ] ||
+		{ [[ "$running_buildid" =~ ^[0-9]+$ ]] && [[ "$local_buildid" =~ ^[0-9]+$ ]] && [ "$running_buildid" != "$local_buildid" ]; }; }; then
 		echo -e "\e[33m${DST_now}:游戏本体已更新，当前存档尚未完成重启，尝试重启。\e[0m"
 		restart_updated_game
 		return $?
@@ -3028,7 +3094,9 @@ checkupdate() {
         echo -e "\e[92m更新前buildid: ${old_buildid:-未知}\e[0m"
         echo -e "\e[92m更新后buildid: ${new_buildid:-未知}\e[0m"
 
-        if [ "$new_version" != "$old_version" ] || [ "$new_buildid" != "$old_buildid" ]; then
+        if [ "$new_version" != "$old_version" ] || [ "$new_buildid" != "$old_buildid" ] ||
+			[ -f "$pending_restart_file" ] ||
+			{ [[ "$running_buildid" =~ ^[0-9]+$ ]] && [[ "$new_buildid" =~ ^[0-9]+$ ]] && [ "$running_buildid" != "$new_buildid" ]; }; then
             restart_updated_game
         else
             echo -e "\e[92m${DST_now}:已执行SteamCMD同步，游戏版本号和buildid均未变化，不重启\e[0m"
